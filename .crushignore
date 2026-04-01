@@ -1,0 +1,8 @@
+.mcp-tools/
+rust_indexer/tests/
+doc/planning_state.json
+.devcontainer/
+AGENTS.md
+
+doc/features/
+!doc/features/feature_core_indexing.md

@@ -5,3 +5,5 @@ AGENTS.md
 node_modules/
 # Rust target
 rust_indexer/target/
+*.Trash*
+.project-skills/

@@ -1,5 +1,5 @@
 {
-  "global_completion": 0.9,
+  "global_completion": 0.92,
   "global_threshold": 0.92,
   "sections": {
     "project_overview": {
@@ -47,15 +47,17 @@
       ]
     },
     "repository_scanning": {
-      "completion": 1.0,
+      "completion": 0.98,
       "threshold": 0.9,
       "assumptions": [
-        "Chamador fornece path e ignore patterns"
+        "Chamador fornece path e ignore patterns",
+        "Configurações incluem padrões globais compatíveis com globset"
       ],
       "open_questions": [],
       "decisions": [
         "Respeitar .gitignore/.crushignore se chamador permitir",
-        "Suportar modo git: listar arquivos modificados entre commits ou HEAD (quando solicitado pelo chamador) — usar shell git (invocar git) para determinar diffs"
+        "Suportar modo git: listar arquivos modificados entre commits ou HEAD (quando solicitado pelo chamador) — usar shell git (invocar git) para determinar diffs",
+        "Construir walker com ScanOptions (include/ignore) e metadados (size/mtime/hash/language)"
       ]
     },
     "parallel_processing": {
@@ -69,6 +71,73 @@
         "Paralelizar parsing/chunking via Rayon par_iter; permitir max_concurrency configurável via options ou RAYON_NUM_THREADS env var",
         "Implementar concurrency hardening: pool de parsers por thread, testes de race, e isolamento de estado do Tree-sitter",
         "Usar semáforo interno para evitar oversubscription quando max_concurrency > available cores"
+      ]
+    },
+    "ast_extraction": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Cada linguagem terá um adapter próprio de parsing e extração"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Isolar lógica de parsing em services no domínio para facilitar testes e substituição de Tree-sitter",
+        "Normalizar ranges em start_line/start_col/end_line/end_col",
+        "Encapsular diferenças por linguagem em adaptadores"
+      ]
+    },
+    "symbol_extraction": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "V1 focará em símbolos de alto valor"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Modelos de domínio para Symbol e Chunk; operações puro-funcionais quando possível",
+        "Extrair module, class, struct, interface, enum, function, method, trait, type_alias e const",
+        "Padronizar Symbol com id, kind, name, qualified_name, file_path, range, signature, visibility e parent_symbol_id"
+      ]
+    },
+    "import_graph": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Resolução total de dependências externas não é obrigatória na V1"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Escopo: registrar arestas por arquivo → módulo importado, por símbolo/função (quando disponível)",
+        "Incluir import_kind, alias, imported_symbol e resolved",
+        "Modelar ImportEdge como { from_file, to_module, imported_symbol, alias, import_kind, location, resolved }"
+      ]
+    },
+    "call_graph": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Dispatch dinâmico e reflexão não serão totalmente resolvidos na V1"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Escopo: registrar chamadas diretas entre caller e callee quando detectáveis estaticamente",
+        "Marcar chamadas dinâmicas/indiretas com resolved=false ou call_kind=dynamic",
+        "Modelar CallEdge como { caller_symbol_id, callee_name, callee_symbol_id, call_kind, location, resolved }"
+      ]
+    },
+    "chunk_generation": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Chunk regras baseadas em linhas e símbolos"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Se file_lines < 200 -> full file chunk + symbol chunks; else symbol chunks",
+        "Emitir chunks como eventos JSONL incrementalmente",
+        "Implementar backpressure/streaming: se fila cheia -> PAUSE (não enviar mais eventos) até receber resume; defaults: max_queue_size=500, ack_required=false",
+        "Incluir md5 (chunk_md5), size, language, chunk_kind e symbol_id opcional em metadados de chunk",
+        "Tratamento de arquivos não-UTF8/binários: emitir evento file_invalid e continuar com próximo arquivo"
       ]
     },
     "ast_extraction": {
