@@ -1,4 +1,5 @@
 use crate::domain::types::{ParsedFile, Symbol};
+pub mod rust;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {
