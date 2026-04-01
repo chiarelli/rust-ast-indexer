@@ -1,3 +1,5 @@
+pub mod dispatcher;
+
 use std::io::{self, BufRead};
 use std::thread;
 use serde_json::json;
@@ -13,24 +15,16 @@ pub fn run_cli() {
             Ok(l) => {
                 let l = l.trim();
                 if l.is_empty() { continue; }
-                if let Some(cmd) = jsonl::read_command(l) {
-                    handle_command(cmd);
-                } else {
-                    let ev = Event {
-                        protocol_version: "1.0.0".into(),
-                        r#type: "event".into(),
-                        event: "error".into(),
-                        job_id: None,
-                        payload: Some(json!({"code":"INVALID_COMMAND","message":"failed to parse command","recoverable":false})),
-                    };
-                    jsonl::write_event(&ev);
-                }
+                // delegate to dispatcher module
+                let handled = crate::cli::dispatcher::dispatch_line(l);
+                if handled { continue; }
             }
             Err(_) => break,
         }
     }
 }
 
+#[allow(dead_code)]
 fn handle_command(cmd: Command) {
     match cmd.command.as_str() {
         "list_languages" => {
@@ -129,6 +123,7 @@ fn handle_command(cmd: Command) {
 }
 
 // helper to modify command via ownership; small convenience
+#[allow(dead_code)]
 trait CmdExt { fn with_command(self, c: &str) -> Command; }
 impl CmdExt for Command {
     fn with_command(mut self, c: &str) -> Command { self.command = c.to_string(); self }
