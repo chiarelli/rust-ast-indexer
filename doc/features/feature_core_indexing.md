@@ -25,6 +25,8 @@ Descrição: construir esqueleto do binário, garantir protocolo JSONL estável,
       - atividade: docs(protocol): add protocol examples in doc/protocol.md
     - task: infra/git
       - atividade: feat(git): add shell-git diff helper (use_git mode)
+      - atividade: feat(git): integrate infra::git with CLI incremental_index and IndexOptions explicit_files (completed)
+      - atividade: test(git): add unit tests for git helper and integration smoke for incremental_index (completed)
     - task: tests/ci
       - atividade: chore(ci): add GitHub Actions skeleton (fmt/clippy/test)
       - atividade: test(smoke): add smoke test for list_languages + index_path
