@@ -3,9 +3,80 @@ use std::sync::Arc;
 use crate::infra::parser_pool::ParserPool;
 use dashmap::DashMap;
 
+
+#[derive(Debug)]
+pub enum ConfigError {
+    Io(std::io::Error),
+    Parse(serde_json::Error),
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ConfigError::Io(e) => write!(f, "failed to read config file: {}", e),
+            ConfigError::Parse(e) => write!(f, "failed to parse config: {}", e),
+        }
+    }
+}
+
+impl std::error::Error for ConfigError {}
+
+impl From<std::io::Error> for ConfigError {
+    fn from(e: std::io::Error) -> Self {
+        ConfigError::Io(e)
+    }
+}
+
+impl From<serde_json::Error> for ConfigError {
+    fn from(e: serde_json::Error) -> Self {
+        ConfigError::Parse(e)
+    }
+}
+
+#[derive(Debug)]
 pub struct Config {
     pub max_concurrency: usize,
     pub max_queue_size: usize,
+}
+
+impl Config {
+    pub fn new(max_concurrency: usize, max_queue_size: usize) -> Self {
+        Self { max_concurrency, max_queue_size }
+    }
+
+    #[cfg(feature = "parsing")]
+    pub fn from_file(path: &str) -> Result<Self, ConfigError> {
+        let content = std::fs::read_to_string(path)?;
+        Ok(serde_json::from_str(&content)?)
+    }
+
+    /// Loads config by checking environment variables first, then falling back to defaults.
+    pub fn from_env() -> Self {
+        let max_concurrency = std::env::var("MAX_CONCURRENCY")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or_else(num_cpus::get);
+
+        let max_queue_size = std::env::var("MAX_QUEUE_SIZE")
+            .ok()
+            .and_then(|v| v.parse::<usize>().ok())
+            .unwrap_or(100);
+
+        Self { max_concurrency, max_queue_size }
+    }
+
+    /// Attempts to load from a config file; falls back to environment variables.
+    pub fn load() -> Self {
+        // try common config file names in current directory
+        #[allow(unused_variables)]
+        for path in ["rust_indexer.json", ".rust_indexer.json", "config.json"] {
+            #[cfg(feature = "parsing")]
+            if let Ok(config) = Self::from_file(path) {
+                return config;
+            }
+        }
+        Self::from_env()
+    }
 }
 
 pub struct Registry {
@@ -79,6 +150,31 @@ mod tests {
         assert!(ctx.registry.get("nope").is_none());
         assert!(ctx.metrics.is_none());
         assert!(ctx.logger.is_none());
+    }
+
+    #[test]
+    fn config_new_creates_instance() {
+        let cfg = Config::new(4, 50);
+        assert_eq!(cfg.max_concurrency, 4);
+        assert_eq!(cfg.max_queue_size, 50);
+    }
+
+    #[test]
+    fn config_from_env_defaults_without_vars() {
+        let cfg = Config::from_env();
+        assert!(cfg.max_concurrency > 0);
+        assert!(cfg.max_queue_size > 0);
+    }
+
+    #[test]
+    fn config_from_env_respects_vars() {
+        std::env::set_var("MAX_CONCURRENCY", "8");
+        std::env::set_var("MAX_QUEUE_SIZE", "200");
+        let cfg = Config::from_env();
+        assert_eq!(cfg.max_concurrency, 8);
+        assert_eq!(cfg.max_queue_size, 200);
+        std::env::remove_var("MAX_CONCURRENCY");
+        std::env::remove_var("MAX_QUEUE_SIZE");
     }
 
     #[test]

@@ -21,7 +21,7 @@ Visão geral da arquitetura
 - Registry: pequenas API `register(lang, Box<dyn LanguageAdapter>)` e `get(lang) -> Option<Arc<dyn LanguageAdapter>>`.
   - Implementação recomendada: DashMap<String, Arc<dyn LanguageAdapter>> para alta concorrência.
 
-- ParserPool: criado/owned pelo Context; provê Arc<ParserPool> para Indexer/handlers; teardown controlado pelo Context drop.
+- ParserPool: criado/owned pelo Context; provê Arc<ParserPool> para Indexer/handlers. Teardown natural no exit do processo — Drop explícito NÃO implementado; adiar quando houver necessidade real (hot-reload, graceful shutdown em servidor).
 
 - Startup flow
   1. main -> load config
