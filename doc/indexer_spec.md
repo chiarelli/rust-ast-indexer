@@ -137,7 +137,11 @@ O engine usa Rayon para maximizar throughput em máquinas multicore, mantendo is
 
 ### Data structures
 - `ThreadPoolConfig { max_threads }`
+- `ParserPool { per_thread_parser }` uses optional feature `parsing` to enable Tree-sitter grammars. When enabled, ParserPool pre-warms per-thread parser instances for supported languages and exposes a safe API for workers to acquire and use parsers.
+
 - `ParserPool { per_thread_parser }`
+- ParserPool uses tree-sitter parsers (optional feature `parsing`); pool provides per-thread parser instances wrapped in Arc<Mutex<Parser>> to support reuse across Rayon workers.
+
 - `BackpressureConfig { max_queue_size, pause_on_full, cancel_support }`
 
 ### Algorithms
