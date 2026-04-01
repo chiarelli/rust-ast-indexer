@@ -19,6 +19,7 @@ pub struct ScanOptions {
     pub include_patterns: Vec<String>,
     pub ignore_patterns: Vec<String>,
     pub follow_links: bool,
+    pub load_ignores: bool,
 }
 
 impl ScanOptions {
@@ -28,6 +29,7 @@ impl ScanOptions {
             include_patterns: Vec::new(),
             ignore_patterns: Vec::new(),
             follow_links: false,
+            load_ignores: false,
         }
     }
 
@@ -43,6 +45,11 @@ impl ScanOptions {
 
     pub fn follow_links(mut self, follow: bool) -> Self {
         self.follow_links = follow;
+        self
+    }
+
+    pub fn with_load_ignores(mut self, load: bool) -> Self {
+        self.load_ignores = load;
         self
     }
 }
@@ -109,7 +116,15 @@ where
     F: FnMut(FileRecord),
 {
     let include_set = build_globset(&opts.include_patterns)?;
-    let ignore_set = build_globset(&opts.ignore_patterns)?;
+    let mut ignore_patterns = opts.ignore_patterns.clone();
+    if opts.load_ignores {
+        let loaded = load_ignore_patterns(&opts.path);
+        ignore_patterns.extend(loaded);
+        // Always ignore repository ignore files themselves
+        ignore_patterns.push(".gitignore".to_string());
+        ignore_patterns.push(".crushignore".to_string());
+    }
+    let ignore_set = build_globset(&ignore_patterns)?;
     let walker = WalkDir::new(&opts.path).follow_links(opts.follow_links);
 
     for entry in walker.into_iter().flatten() {
@@ -155,6 +170,23 @@ where
     }
 
     Ok(())
+}
+
+fn load_ignore_patterns(root: &Path) -> Vec<String> {
+    let mut patterns = Vec::new();
+    for fname in &[".gitignore", ".crushignore"] {
+        let path = root.join(fname);
+        if let Ok(content) = std::fs::read_to_string(&path) {
+            for line in content.lines() {
+                let line = line.trim();
+                if line.is_empty() || line.starts_with('#') {
+                    continue;
+                }
+                patterns.push(line.to_string());
+            }
+        }
+    }
+    patterns
 }
 
 fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error> {
@@ -287,5 +319,19 @@ mod tests {
         let dir = tempdir().unwrap();
         let opts = ScanOptions::new(dir.path()).with_include("[");
         assert!(matches!(walk_path(&opts), Err(WalkerError::Glob(_))));
+    }
+
+    #[test]
+    fn loads_gitignore_patterns_when_enabled() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "secret.txt\n").unwrap();
+        std::fs::write(dir.path().join("secret.txt"), b"topsecret").unwrap();
+        std::fs::write(dir.path().join("visible.txt"), b"ok").unwrap();
+
+        let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
+        let records = walk_path(&opts).unwrap();
+
+        assert_eq!(records.len(), 1);
+        assert_eq!(records[0].path, "visible.txt");
     }
 }
