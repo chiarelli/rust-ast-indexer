@@ -1,9 +1,7 @@
 use std::sync::Arc;
 
 use crate::infra::parser_pool::ParserPool;
-
-use std::collections::HashMap;
-use std::sync::RwLock;
+use dashmap::DashMap;
 
 pub struct Config {
     pub max_concurrency: usize,
@@ -11,12 +9,12 @@ pub struct Config {
 }
 
 pub struct Registry {
-    inner: RwLock<HashMap<String, Arc<dyn crate::adapters::LanguageAdapter>>>,
+    inner: DashMap<String, Arc<dyn crate::adapters::LanguageAdapter>>,
 }
 
 impl Default for Registry {
     fn default() -> Self {
-        Self { inner: RwLock::new(HashMap::new()) }
+        Self { inner: DashMap::new() }
     }
 }
 
@@ -26,13 +24,11 @@ impl Registry {
     }
 
     pub fn register(&self, lang: &str, adapter: Arc<dyn crate::adapters::LanguageAdapter>) {
-        let mut m = self.inner.write().unwrap();
-        m.insert(lang.to_string(), adapter);
+        self.inner.insert(lang.to_string(), adapter);
     }
 
     pub fn get(&self, lang: &str) -> Option<Arc<dyn crate::adapters::LanguageAdapter>> {
-        let m = self.inner.read().unwrap();
-        m.get(lang).map(|v| v.clone())
+        self.inner.get(lang).as_ref().map(|entry| Arc::clone(entry.value()))
     }
 }
 

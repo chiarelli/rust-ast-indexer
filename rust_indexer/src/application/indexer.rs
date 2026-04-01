@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
+use crate::app::bootstrap::ApplicationContext;
 use crate::domain::types::{Chunk, FileRecord};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};

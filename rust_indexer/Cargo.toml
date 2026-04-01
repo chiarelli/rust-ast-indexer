@@ -12,6 +12,7 @@ blake3 = "1.3"
 num_cpus = "1.16"
 walkdir = "2.3"
 globset = "0.4"
+dashmap = "5.4"
 
 # Tree-sitter for parsing (optional languages)
 tree-sitter = "0.20"
@@ -27,8 +28,7 @@ parsing = ["tree-sitter-rust"]
 version = "0.20"
 optional = true
 
-# concurrency-friendly registry
-dashmap = { version = "5.4", features = ["serde_impls"] }
+
 
 [dev-dependencies]
 assert_cmd = "2.0"
