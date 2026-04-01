@@ -75,22 +75,34 @@ impl Indexer {
             .enumerate()
             .with_max_len(1)
             .for_each_with(tx.clone(), |s, (idx, file)| {
-                // Each worker can acquire a reference to parser pool (placeholder)
-                let _parser = Arc::clone(&pool);
+                // Each worker can acquire a parser from the pool. Use thread index to pick one.
+                let parser_arc = pool.get(idx);
+                let mut parser = parser_arc.lock().unwrap();
 
-                // Simulate chunk generation (placeholder)
+                // Parse file content using tree-sitter (if available for language)
+                let text = std::fs::read_to_string(&file.path).unwrap_or_default();
+                let tree = parser.parse(&text, None);
+
+                // For now, generate a simple chunk using the file content's first line
+                let first_line = text.lines().next().unwrap_or("").to_string();
+
                 let chunk = Chunk {
                     id: format!("chunk-{}", idx),
                     file_path: file.path.clone(),
                     start_line: 1,
                     end_line: 1,
-                    text: String::new(),
+                    text: first_line,
                     md5: file.hash.clone(),
                     size: file.size as usize,
                     language: file.language.clone(),
                     symbol_id: None,
                     chunk_kind: Some("FullFile".into()),
                 };
+
+                // Optionally inspect tree to ensure parsing succeeded (not used yet)
+                if tree.is_none() {
+                    // parsing failed; still emit chunk with empty text
+                }
 
                 // Send chunk to collector
                 let _ = s.send((chunk, file.clone()));

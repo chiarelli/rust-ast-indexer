@@ -12,6 +12,10 @@ num_cpus = "1.16"
 walkdir = "2.3"
 globset = "0.4"
 
+# Tree-sitter for parsing (optional languages)
+tree-sitter = "0.20"
+tree-sitter-rust = "0.20"
+
 [dev-dependencies]
 tempfile = "3.6"
 
