@@ -92,30 +92,35 @@ Arquitetura DDD-lite com separação entre domínio, aplicação, infraestrutura
 ## Repository Scanning
 
 ### Description
-A engine faz varredura do repositório e produz a lista efetiva de arquivos candidatos à indexação.
+A engine scans repositories and returns a curated `Vec<FileRecord>` reflecting caller-provided include/ignore patterns plus file metadata useful for downstream chunking.
 
 ### Technical design
-- Usa `Walkdir` ou equivalente.
-- Respeita `ignore_patterns` do caller.
-- Opcionalmente respeita `.gitignore` e `.crushignore`.
-- Suporta `list_files` e `dry_run` sem parsing.
-- Suporta `incremental_index` com lista explícita de arquivos ou `use_git=true`.
+- Uses `walkdir::WalkDir` configured via `ScanOptions` capturing include/ignore glob patterns and link behavior.
+- Builds `GlobSet`s from caller-provided patterns (via `globset`) with fallback to global wildcard when no include patterns are supplied.
+- Computes per-file metadata (`size`, `mtime`, `blake3` hash, language hint) so downstream components can deduplicate or schedule work without re-reading content.
+- Supports `list_files`, `dry_run`, and `incremental_index` purely with metadata emission.
+- Optionally honors `.gitignore`/`.crushignore` when the caller preloads them into ignore patterns, deferring auto-detection for a future iteration.
 
 ### Data structures
 - `ScanRequest { path, include_patterns, ignore_patterns, use_git, git_range }`
-- `GitRange { from, to }`
+- `ScanOptions { path: PathBuf, include_patterns: Vec<String>, ignore_patterns: Vec<String>, follow_links: bool }`
+- `WalkerError { Glob(globset::Error) }`
+- `FileRecord { path, size, mtime, hash, language }`
 
 ### Algorithms
-- Caminho normal: varredura recursiva + filtros.
-- Caminho incremental: usar lista explícita do caller; se `use_git=true`, executar `git diff --name-only` via shell git.
-- Normalizar caminhos relativos ao root do job.
+- Build glob sets for include and ignore patterns (empty set means all files allowed).
+- Walk directories recursively (optionally following symlinks) and skip non-files early.
+- Normalize relative paths and apply ignore filters before include filters (ignores take priority).
+- Gather metadata: file size, mtime, hash, language hint, then sort results deterministically.
+- Skip files whose metadata or hash cannot be computed instead of failing the job.
 
 ### Open questions
-- Nenhuma no momento.
+- Future enhancement: load `.gitignore`/`.crushignore` automatically when requested.
 
 ### Assumptions
-- Repositórios usam layout de arquivos compatível com scanning recursivo.
-- `git` estará disponível no PATH quando `use_git=true`.
+- Repositories are structured for recursive scanning.
+- Caller provides ignore/ include patterns (including .gitignore contents if desired).
+- Patterns follow `globset` semantics.
 
 ## Parallel Processing (Rayon Strategy)
 
