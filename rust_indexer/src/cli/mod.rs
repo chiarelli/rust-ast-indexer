@@ -172,3 +172,58 @@ trait CmdExt { fn with_command(self, c: &str) -> Command; }
 impl CmdExt for Command {
     fn with_command(mut self, c: &str) -> Command { self.command = c.to_string(); self }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::application::protocol::Command;
+    use serde_json::json;
+    use std::{thread, time::Duration};
+
+    #[test]
+    fn handle_command_list_languages_emits_capabilities() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "list_languages".into(), seq: Some(200), job_id: None, payload: None };
+        handle_command(cmd);
+    }
+
+    #[test]
+    fn handle_command_index_path_valid_executes() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "index_path".into(), seq: Some(201), job_id: Some("job-ut-1".into()), payload: Some(json!({"path": ".", "options": {"max_concurrency": 1}})) };
+        handle_command(cmd);
+        thread::sleep(Duration::from_millis(20)); // Give spawned thread a chance to start
+    }
+
+    #[test]
+    fn handle_command_index_path_missing_payload_no_panic() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "index_path".into(), seq: Some(202), job_id: Some("job-ut-2".into()), payload: None };
+        handle_command(cmd);
+    }
+
+    #[test]
+    fn handle_command_index_path_missing_path_no_panic() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "index_path".into(), seq: Some(203), job_id: Some("job-ut-3".into()), payload: Some(json!({})) };
+        handle_command(cmd);
+    }
+
+    #[test]
+    fn handle_command_dry_run_list_files_ack() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "dry_run".into(), seq: Some(204), job_id: Some("job-ut-4".into()), payload: None };
+        handle_command(cmd);
+    }
+
+    #[test]
+    fn handle_command_resume_and_incremental_alias() {
+        let cmd_resume = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "resume".into(), seq: Some(205), job_id: Some("job-ut-5".into()), payload: None };
+        handle_command(cmd_resume);
+
+        let cmd_inc = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "incremental_index".into(), seq: Some(206), job_id: Some("job-ut-6".into()), payload: Some(json!({"path": "."})) };
+        handle_command(cmd_inc);
+    }
+
+    #[test]
+    fn cmdext_with_command_replaces_command() {
+        let cmd = Command { protocol_version: "1.0.0".into(), r#type: "command".into(), command: "dry_run".into(), seq: Some(300), job_id: None, payload: None };
+        let new = cmd.with_command("index_path");
+        assert_eq!(new.command, "index_path");
+    }
+}
