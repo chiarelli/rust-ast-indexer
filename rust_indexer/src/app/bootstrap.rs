@@ -32,10 +32,21 @@ impl Registry {
     }
 }
 
+/// Placeholder for metrics collection; currently unused.
+/// When real metrics integration arrives this struct
+/// will implement that interface (prometheus/otel).
+pub struct Metrics {}
+
+/// Placeholder for logging; currently unused.
+/// Replaces ad-hoc println!/eprintln in favor of structured output.
+pub struct Logger {}
+
 pub struct ApplicationContext {
     pub registry: Arc<Registry>,
     pub parser_pool: Arc<ParserPool>,
     pub config: Config,
+    pub metrics: Option<Arc<Metrics>>,
+    pub logger: Option<Arc<Logger>>,
 }
 
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
@@ -49,7 +60,7 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
         crate::adapters::rust::register_to(&registry);
     }
 
-    Arc::new(ApplicationContext { registry, parser_pool, config })
+    Arc::new(ApplicationContext { registry, parser_pool, config, metrics: None, logger: None })
 }
 
 #[cfg(test)]
@@ -62,5 +73,7 @@ mod tests {
         let ctx = init_context(cfg);
         assert!(Arc::strong_count(&ctx) >= 1);
         assert!(ctx.registry.get("nope").is_none());
+        assert!(ctx.metrics.is_none());
+        assert!(ctx.logger.is_none());
     }
 }
