@@ -71,9 +71,21 @@ Emitido no startup.
 ```
 
 ### `file_listed`
+Emitted for each file discovered during scanning when running commands that stream results (for example: `index_path` when streaming, `list_files` / `dry_run` when the caller requests event streaming). The payload contains a `file` object (FileRecord) with stable metadata the caller can use for deduplication, ordering and to drive downstream parsing/indexing.
+
+Payload fields:
+- `file.path`: relative path to the repository root (string)
+- `file.size`: file size in bytes (integer)
+- `file.mtime`: modification time as seconds since UNIX epoch (integer)
+- `file.hash`: deterministic content hash (blake3 hex) (string)
+- `file.language`: detected language or null when unknown (string | null)
+
+Example:
 ```json
-{"protocol_version":"1.0.0","type":"event","event":"file_listed","job_id":"job-123","payload":{"file":{"path":"src/lib.rs","size":1234,"hash":"abc"}}}
+{"protocol_version":"1.0.0","type":"event","event":"file_listed","job_id":"job-123","payload":{"file":{"path":"src/lib.rs","size":1234,"mtime":1610000000,"hash":"d41d8cd98f00b204e9800998ecf8427e","language":"rust"}}}
 ```
+
+Note: callers may use `file.hash` (chunk/file hashes) to perform idempotent upserts into their storage and to skip unchanged files on incremental runs.
 
 ### `file_parsed`
 ```json
@@ -91,11 +103,19 @@ Emitido no startup.
 ```
 
 ### `file_invalid`
-Para arquivos binários ou não-UTF8.
+Emitted when a file cannot be read or is detected as binary/non-UTF8. This event notifies the caller that the file was discovered but skipped and why. Emitted during streaming scans (e.g., `index_path` streaming) and by the walker callback when configured to emit events.
+
+Common `reason` values:
+- `non_utf8_or_binary` — file appears to be binary or contains NUL bytes / non-UTF8 sequences
+- `io_error` — I/O error occurred when reading metadata or content
+- `permission_denied` — permission error when accessing the file (may also be reported as `io_error`)
+
+Example:
 ```json
 {"protocol_version":"1.0.0","type":"event","event":"file_invalid","job_id":"job-123","payload":{"path":"assets/logo.bin","reason":"non_utf8_or_binary"}}
 ```
 
+Note: Callers should treat `file_invalid` as recoverable per-file information (it does not cancel the whole job)."}]}]}]
 ### `error`
 ```json
 {"protocol_version":"1.0.0","type":"event","event":"error","job_id":"job-123","payload":{"code":"BACKPRESSURE","message":"output queue is full","recoverable":true,"detail":{"pause_required":true}}}
