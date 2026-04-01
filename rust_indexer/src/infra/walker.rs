@@ -8,7 +8,10 @@ use blake3::Hasher;
 use globset::{Glob, GlobSet, GlobSetBuilder};
 use walkdir::WalkDir;
 
+use crate::application::protocol::Event;
 use crate::domain::types::FileRecord;
+use crate::infra::jsonl;
+use serde_json::json;
 
 #[derive(Debug, Clone)]
 pub struct ScanOptions {
@@ -62,11 +65,37 @@ impl WalkerError {
 }
 
 pub fn walk_path(opts: &ScanOptions) -> Result<Vec<FileRecord>, WalkerError> {
+    let mut files = Vec::new();
+    walk_with_callback(opts, |record| files.push(record))?;
+    files.sort_by(|a, b| a.path.cmp(&b.path));
+    Ok(files)
+}
+
+pub fn emit_file_listed_events(
+    opts: &ScanOptions,
+    job_id: Option<String>,
+) -> Result<(), WalkerError> {
+    walk_with_callback(opts, |record| {
+        let ev = Event {
+            protocol_version: "1.0.0".into(),
+            r#type: "event".into(),
+            event: "file_listed".into(),
+            job_id: job_id.clone(),
+            payload: Some(json!({
+                "file": record
+            })),
+        };
+        jsonl::write_event(&ev);
+    })
+}
+
+fn walk_with_callback<F>(opts: &ScanOptions, mut handler: F) -> Result<(), WalkerError>
+where
+    F: FnMut(FileRecord),
+{
     let include_set = build_globset(&opts.include_patterns)?;
     let ignore_set = build_globset(&opts.ignore_patterns)?;
     let walker = WalkDir::new(&opts.path).follow_links(opts.follow_links);
-
-    let mut files = Vec::new();
 
     for entry in walker.into_iter().flatten() {
         if !entry.file_type().is_file() {
@@ -101,7 +130,7 @@ pub fn walk_path(opts: &ScanOptions) -> Result<Vec<FileRecord>, WalkerError> {
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
 
-        files.push(FileRecord {
+        handler(FileRecord {
             path: relative_path,
             size: metadata.len(),
             mtime,
@@ -110,8 +139,7 @@ pub fn walk_path(opts: &ScanOptions) -> Result<Vec<FileRecord>, WalkerError> {
         });
     }
 
-    files.sort_by(|a, b| a.path.cmp(&b.path));
-    Ok(files)
+    Ok(())
 }
 
 fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error> {

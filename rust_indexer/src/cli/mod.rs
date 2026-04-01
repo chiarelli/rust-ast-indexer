@@ -133,38 +133,66 @@ fn handle_command(cmd: Command) {
                 jsonl::write_event(&ev_start);
 
                 let indexer = Indexer::new();
-                let chunks = indexer.index_path(&path, opts);
+                let result = indexer.index_path(&path, opts);
+                match result {
+                    Ok(result) => {
+                        for chunk in &result.chunks {
+                            let ev = Event {
+                                protocol_version: "1.0.0".into(),
+                                r#type: "event".into(),
+                                event: "chunk_emitted".into(),
+                                job_id: Some(job_id.clone()),
+                                payload: Some(json!({
+                                    "chunk_id": chunk.id,
+                                    "chunk_kind": "Symbol",
+                                    "file": chunk.file_path,
+                                    "language": chunk.language,
+                                    "symbol_id": chunk.symbol_id,
+                                    "start_line": chunk.start_line,
+                                    "end_line": chunk.end_line,
+                                    "text": chunk.text,
+                                    "chunk_md5": chunk.md5,
+                                    "size": chunk.size
+                                })),
+                            };
+                            jsonl::write_event(&ev);
+                        }
 
-                for chunk in &chunks {
-                    let ev = Event {
-                        protocol_version: "1.0.0".into(),
-                        r#type: "event".into(),
-                        event: "chunk_emitted".into(),
-                        job_id: Some(job_id.clone()),
-                        payload: Some(json!({
-                            "chunk_id": chunk.id,
-                            "chunk_kind": "Symbol",
-                            "file": chunk.file_path,
-                            "language": chunk.language,
-                            "symbol_id": chunk.symbol_id,
-                            "start_line": chunk.start_line,
-                            "end_line": chunk.end_line,
-                            "text": chunk.text,
-                            "chunk_md5": chunk.md5,
-                            "size": chunk.size
-                        })),
-                    };
-                    jsonl::write_event(&ev);
+                        let ev_done = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "job_completed".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(
+                                json!({"processed": result.chunks.len(), "duration_ms": 0}),
+                            ),
+                        };
+                        jsonl::write_event(&ev_done);
+                    }
+                    Err(err) => {
+                        let ev_error = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "error".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(json!({
+                                "code": "WALKER_ERROR",
+                                "message": format!("walker failed: {:?}", err),
+                                "recoverable": false
+                            })),
+                        };
+                        jsonl::write_event(&ev_error);
+
+                        let ev_done = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "job_completed".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                        };
+                        jsonl::write_event(&ev_done);
+                    }
                 }
-
-                let ev_done = Event {
-                    protocol_version: "1.0.0".into(),
-                    r#type: "event".into(),
-                    event: "job_completed".into(),
-                    job_id: Some(job_id.clone()),
-                    payload: Some(json!({"processed": chunks.len(), "duration_ms": 0})),
-                };
-                jsonl::write_event(&ev_done);
             });
         }
         "dry_run" | "list_files" => {

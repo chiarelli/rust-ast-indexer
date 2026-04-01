@@ -1,6 +1,7 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
+use tempfile::tempdir;
 
 fn spawn_indexer() -> Child {
     // Try to locate built binary via CARGO_BIN_EXE; if not set (running via `cargo test`),
@@ -44,14 +45,16 @@ fn smoke_index_path_emits_job_events() {
     let cap = read_next_event(&mut reader);
     assert_eq!(cap["event"], "capabilities");
 
-    // send index_path command
+    // create small tempdir and file, send index_path command pointing to it
+    let td = tempfile::tempdir().unwrap();
+    std::fs::write(td.path().join("lib.rs"), b"fn main() {}\n").unwrap();
     let cmd = json!({
         "protocol_version": "1.0.0",
         "type": "command",
         "command": "index_path",
         "seq": 10,
         "job_id": "job-smoke-1",
-        "payload": {"path": ".", "options": {"max_concurrency": 1}}
+        "payload": {"path": td.path().to_str().unwrap(), "options": {"max_concurrency": 1}}
     });
     writeln!(stdin, "{}", cmd.to_string()).expect("failed to write command");
     // keep stdin open to avoid the child exiting prematurely
@@ -59,7 +62,7 @@ fn smoke_index_path_emits_job_events() {
     // expect job_started then job_completed
     let mut got_started = false;
     let mut got_completed = false;
-    for _ in 0..10 {
+    for _ in 0..2000 {
         let ev = read_next_event(&mut reader);
         let name = ev["event"].as_str().unwrap_or("");
         if name == "job_started" && ev["job_id"] == "job-smoke-1" {
