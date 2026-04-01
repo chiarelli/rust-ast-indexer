@@ -89,6 +89,21 @@ pub fn emit_file_listed_events(
     })
 }
 
+pub fn emit_file_listed_from_records(records: &[FileRecord], job_id: Option<String>) {
+    for record in records {
+        let ev = Event {
+            protocol_version: "1.0.0".into(),
+            r#type: "event".into(),
+            event: "file_listed".into(),
+            job_id: job_id.clone(),
+            payload: Some(json!({
+                "file": record
+            })),
+        };
+        jsonl::write_event(&ev);
+    }
+}
+
 fn walk_with_callback<F>(opts: &ScanOptions, mut handler: F) -> Result<(), WalkerError>
 where
     F: FnMut(FileRecord),
