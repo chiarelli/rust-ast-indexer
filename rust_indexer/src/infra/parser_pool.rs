@@ -3,5 +3,7 @@
 pub struct ParserPool {}
 
 impl ParserPool {
-    pub fn new(_size: usize) -> Self { ParserPool {} }
+    pub fn new(_size: usize) -> Self {
+        ParserPool {}
+    }
 }

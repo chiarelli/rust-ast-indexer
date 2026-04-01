@@ -13,7 +13,9 @@ impl Default for Indexer {
 }
 
 impl Indexer {
-    pub fn new() -> Self { Indexer {} }
+    pub fn new() -> Self {
+        Indexer {}
+    }
     pub fn index_path(&self, _path: &str, _opts: IndexOptions) -> Vec<Chunk> {
         // placeholder
         Vec::new()
