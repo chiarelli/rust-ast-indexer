@@ -30,6 +30,10 @@ impl Registry {
     pub fn get(&self, lang: &str) -> Option<Arc<dyn crate::adapters::LanguageAdapter>> {
         self.inner.get(lang).as_ref().map(|entry| Arc::clone(entry.value()))
     }
+
+    pub fn list_languages(&self) -> Vec<String> {
+        self.inner.iter().map(|entry| entry.key().clone()).collect()
+    }
 }
 
 /// Placeholder for metrics collection; currently unused.
@@ -75,5 +79,33 @@ mod tests {
         assert!(ctx.registry.get("nope").is_none());
         assert!(ctx.metrics.is_none());
         assert!(ctx.logger.is_none());
+    }
+
+    #[test]
+    fn register_and_list_languages() {
+        use crate::adapters::LanguageAdapter;
+        use crate::domain::parser::ParsedFile;
+        use anyhow::Result;
+
+        struct StubAdapter;
+        impl LanguageAdapter for StubAdapter {
+            fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
+                Ok(ParsedFile { language: "stub".to_string(), source_len: 0 })
+            }
+            fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<crate::domain::types::Symbol>> {
+                Ok(vec![])
+            }
+            fn box_clone(&self) -> Box<dyn LanguageAdapter> {
+                Box::new(StubAdapter)
+            }
+        }
+
+        let reg = Registry::new();
+        assert!(reg.list_languages().is_empty());
+        reg.register("test", Arc::new(StubAdapter));
+        let mut langs = reg.list_languages();
+        langs.sort();
+        assert_eq!(langs, vec!["test"]);
+        assert!(reg.get("test").is_some());
     }
 }

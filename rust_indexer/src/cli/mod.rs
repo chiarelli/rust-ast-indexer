@@ -20,13 +20,14 @@ pub fn run_cli_default() {
 
 pub fn run_cli(ctx: Arc<ApplicationContext>) {
     // emit capabilities at startup
+    let languages = ctx.registry.list_languages();
     let ev = Event {
         protocol_version: "1.0.0".into(),
         r#type: "event".into(),
         event: "capabilities".into(),
         job_id: None,
         payload: Some(
-            json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
+            json!({"version":"0.1.0","languages":languages,"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
         ),
     };
     jsonl::write_event(&ev);
@@ -76,13 +77,14 @@ pub fn run_cli(ctx: Arc<ApplicationContext>) {
 fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
     match cmd.command.as_str() {
         "list_languages" => {
+            let languages = ctx.registry.list_languages();
             let ev = Event {
                 protocol_version: "1.0.0".into(),
                 r#type: "event".into(),
                 event: "capabilities".into(),
                 job_id: None,
                 payload: Some(
-                    json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
+                    json!({"version":"0.1.0","languages":languages,"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
                 ),
             };
             jsonl::write_event(&ev);
