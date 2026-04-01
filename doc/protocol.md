@@ -95,9 +95,32 @@ Note: callers may use `file.hash` (chunk/file hashes) to perform idempotent upse
 Note: When the optional parsing feature is enabled, the engine may emit `file_parsed` events containing extracted symbols and diagnostics. These events are produced by language adapters using Tree-sitter grammars and are not emitted when parsing is disabled.
 
 ### `chunk_emitted`
+Emitted for each semantic chunk produced by the indexer. Chunks are the primary unit the caller will index and embed.
+
+Payload fields:
+- `chunk_id`: unique chunk id (string)
+- `chunk_kind`: one of `FullFile` | `Symbol` | `Contextual` (string, PascalCase)
+- `file`: relative path to repository root (string)
+- `language`: detected language or null when unknown (string | null)
+- `symbol_id`: optional symbol id this chunk is associated with (string | null)
+- `start_line`: starting line number (1-based) included in the chunk (integer)
+- `end_line`: ending line number (inclusive) (integer)
+- `text`: textual content of the chunk (string)
+- `chunk_md5`: md5 hash of the chunk text (string)
+- `size`: size in bytes of the chunk text (integer)
+
+Example:
 ```json
 {"protocol_version":"1.0.0","type":"event","event":"chunk_emitted","job_id":"job-123","payload":{"chunk_id":"chunk-1","chunk_kind":"Symbol","file":"src/lib.rs","language":"rust","symbol_id":"sym-1","start_line":10,"end_line":40,"text":"fn foo() {}","chunk_md5":"d41d8cd98f00b204e9800998ecf8427e","size":12}}
 ```
+
+Notes:
+- `chunk_kind` semantics:
+  - `FullFile`: the chunk represents an entire file (used for small files where the full file is relevant)
+  - `Symbol`: the chunk maps to a symbol (function, method, class, etc.)
+  - `Contextual`: a context window around code (used when symbol boundaries do not map cleanly)
+- `chunk_md5` and `size` provide stable identifiers for caller-side deduplication and size-based batching for embedding.
+- `text` MAY be truncated by the indexer based on configuration; callers should rely on `chunk_md5`/`size` for exact content checks.
 
 ### `job_progress`
 ```json

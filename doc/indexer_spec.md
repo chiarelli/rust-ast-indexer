@@ -278,7 +278,7 @@ Chunks são a unidade de saída textual para indexação semântica no caller.
 - Contar linhas do arquivo.
 - Selecionar ranges dos símbolos.
 - Gerar texto do chunk, calcular hash e tamanho.
-- Emitir `chunk_emitted` por chunk.
+- Emitir `chunk_emitted` por chunk.\n\nThe `chunk_emitted` event uses the `ChunkEventPayload` schema with `chunk_kind` values `FullFile`, `Symbol`, and `Contextual`. Chunks include `chunk_md5` and `size` for caller-side deduplication and batching. See doc/protocol.md for the exact JSON example and field descriptions.
 
 ### Open questions
 - Nenhuma no momento.
