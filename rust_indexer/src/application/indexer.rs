@@ -34,10 +34,10 @@ impl Indexer {
         let scan_opts = ScanOptions::new(path);
         let files = walk_path(&scan_opts)?;
 
-        let chunks = files
-            .iter()
-            .enumerate()
-            .map(|(idx, file)| Chunk {
+        let mut chunks = Vec::new();
+
+        for (idx, file) in files.iter().enumerate() {
+            let chunk = Chunk {
                 id: format!("chunk-{}", idx),
                 file_path: file.path.clone(),
                 start_line: 1,
@@ -48,8 +48,14 @@ impl Indexer {
                 language: file.language.clone(),
                 symbol_id: None,
                 chunk_kind: Some("FullFile".into()),
-            })
-            .collect();
+            };
+
+            // Emit chunk_emitted event for caller (serial path)
+            let payload = crate::application::protocol::ChunkEventPayload::from(chunk.clone());
+            crate::infra::jsonl::write_chunk_event(None, &payload);
+
+            chunks.push(chunk);
+        }
 
         Ok(IndexResult { chunks, files })
     }
