@@ -9,6 +9,7 @@ use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
 
 pub struct IndexOptions {
     pub max_concurrency: usize,
+    pub explicit_files: Option<Vec<String>>,
 }
 
 pub struct Indexer {}
@@ -30,9 +31,19 @@ impl Indexer {
     }
 
     /// Simple serial index_path (keeps previous behavior)
-    pub fn index_path(&self, path: &str, _opts: IndexOptions) -> Result<IndexResult, WalkerError> {
-        let scan_opts = ScanOptions::new(path);
-        let files = walk_path(&scan_opts)?;
+    pub fn index_path(&self, path: &str, opts: IndexOptions) -> Result<IndexResult, WalkerError> {
+        let files = if let Some(explicit) = &opts.explicit_files {
+            explicit.iter().cloned().map(|f_path| FileRecord {
+                path: f_path,
+                size: 0,
+                mtime: 0,
+                hash: "".to_string(),
+                language: None,
+            }).collect()
+        } else {
+            let scan_opts = ScanOptions::new(path);
+            walk_path(&scan_opts)?
+        };
 
         let mut chunks = Vec::new();
 
@@ -67,8 +78,18 @@ impl Indexer {
         opts: IndexOptions,
         job_id: Option<String>,
     ) -> Result<IndexResult, WalkerError> {
-        let scan_opts = ScanOptions::new(path);
-        let files = walk_path(&scan_opts)?;
+        let files = if let Some(explicit) = &opts.explicit_files {
+            explicit.iter().cloned().map(|f_path| FileRecord {
+                path: f_path,
+                size: 0,
+                mtime: 0,
+                hash: "".to_string(),
+                language: None,
+            }).collect()
+        } else {
+            let scan_opts = ScanOptions::new(path);
+            walk_path(&scan_opts)?
+        };
 
         // Pre-warm parser pool (one parser per thread)
         let pool = ParserPool::new(opts.max_concurrency);
@@ -156,7 +177,7 @@ mod tests {
         std::fs::write(&file_path, b"fn main() {}\n").unwrap();
 
         let indexer = Indexer::new();
-        let opts = IndexOptions { max_concurrency: 1 };
+        let opts = IndexOptions { max_concurrency: 1, explicit_files: None };
         let result = indexer
             .index_path(dir.path().to_str().unwrap(), opts)
             .unwrap();
@@ -177,7 +198,7 @@ mod tests {
         std::fs::write(&file_path, b"fn main() {}\n").unwrap();
 
         let indexer = Indexer::new();
-        let opts = IndexOptions { max_concurrency: 2 };
+        let opts = IndexOptions { max_concurrency: 2, explicit_files: None };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
             .unwrap();

@@ -124,6 +124,7 @@ fn handle_command(cmd: Command) {
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
                     .unwrap_or_else(num_cpus::get),
+                explicit_files: None,
             };
 
             // spawn job thread
@@ -217,8 +218,241 @@ fn handle_command(cmd: Command) {
             jsonl::write_event(&ev);
         }
         "incremental_index" => {
-            // For now, treat like index_path; caller may pass use_git/files in payload
-            handle_command(cmd.with_command("index_path"));
+            // Handle incremental_index: support use_git and git_range in payload
+            let job_id = cmd
+                .job_id
+                .clone()
+                .unwrap_or_else(|| "job-unknown".to_string());
+
+            let payload = match cmd.payload {
+                Some(p) => p,
+                None => {
+                    let ev = Event {
+                        protocol_version: "1.0.0".into(),
+                        r#type: "event".into(),
+                        event: "error".into(),
+                        job_id: cmd.job_id.clone(),
+                        payload: Some(
+                            json!({"code":"INVALID_PAYLOAD","message":"missing payload for incremental_index","recoverable":false}),
+                        ),
+                    };
+                    jsonl::write_event(&ev);
+                    return;
+                }
+            };
+
+            let path = payload
+                .get("path")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if path.is_empty() {
+                let ev = Event {
+                    protocol_version: "1.0.0".into(),
+                    r#type: "event".into(),
+                    event: "error".into(),
+                    job_id: cmd.job_id.clone(),
+                    payload: Some(
+                        json!({"code":"INVALID_PAYLOAD","message":"missing path in payload","recoverable":false}),
+                    ),
+                };
+                jsonl::write_event(&ev);
+                return;
+            }
+
+            let use_git = payload
+                .get("use_git")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+
+            // parse git_range if present
+            let git_range = payload.get("git_range");
+            let mut explicit_files: Option<Vec<String>> = None;
+
+            if use_git {
+                // try to obtain files from infra::git
+                if let Some(range) = git_range {
+                    if let (Some(from), Some(to)) = (
+                        range.get("from").and_then(|v| v.as_str()),
+                        range.get("to").and_then(|v| v.as_str()),
+                    ) {
+                        match crate::infra::git::get_git_diff_files(&path, from, to) {
+                            Ok(list) => explicit_files = Some(list),
+                            Err(e) => {
+                                let ev = Event {
+                                    protocol_version: "1.0.0".into(),
+                                    r#type: "event".into(),
+                                    event: "error".into(),
+                                    job_id: Some(job_id.clone()),
+                                    payload: Some(json!({"code":"GIT_ERROR","message":format!("git diff failed: {:?}", e),"recoverable":false})),
+                                };
+                                jsonl::write_event(&ev);
+                                let ev_done = Event {
+                                    protocol_version: "1.0.0".into(),
+                                    r#type: "event".into(),
+                                    event: "job_completed".into(),
+                                    job_id: Some(job_id.clone()),
+                                    payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                                };
+                                jsonl::write_event(&ev_done);
+                                return;
+                            }
+                        }
+                    } else {
+                        // invalid git_range shape: fall back to tracked files
+                        match crate::infra::git::emit_git_tracked_files(&path) {
+                            Ok(list) => explicit_files = Some(list),
+                            Err(e) => {
+                                let ev = Event {
+                                    protocol_version: "1.0.0".into(),
+                                    r#type: "event".into(),
+                                    event: "error".into(),
+                                    job_id: Some(job_id.clone()),
+                                    payload: Some(json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false})),
+                                };
+                                jsonl::write_event(&ev);
+                                let ev_done = Event {
+                                    protocol_version: "1.0.0".into(),
+                                    r#type: "event".into(),
+                                    event: "job_completed".into(),
+                                    job_id: Some(job_id.clone()),
+                                    payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                                };
+                                jsonl::write_event(&ev_done);
+                                return;
+                            }
+                        }
+                    }
+                } else {
+                    match crate::infra::git::emit_git_tracked_files(&path) {
+                        Ok(list) => explicit_files = Some(list),
+                        Err(e) => {
+                            let ev = Event {
+                                protocol_version: "1.0.0".into(),
+                                r#type: "event".into(),
+                                event: "error".into(),
+                                job_id: Some(job_id.clone()),
+                                payload: Some(json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false})),
+                            };
+                            jsonl::write_event(&ev);
+                            let ev_done = Event {
+                                protocol_version: "1.0.0".into(),
+                                r#type: "event".into(),
+                                event: "job_completed".into(),
+                                job_id: Some(job_id.clone()),
+                                payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                            };
+                            jsonl::write_event(&ev_done);
+                            return;
+                        }
+                    }
+                }
+            } else {
+                // not using git; check for explicit files in payload
+                if let Some(files) = payload.get("files").and_then(|v| v.as_array()) {
+                    let mut vec = Vec::new();
+                    for f in files {
+                        if let Some(s) = f.as_str() {
+                            vec.push(s.to_string());
+                        }
+                    }
+                    if !vec.is_empty() {
+                        explicit_files = Some(vec);
+                    }
+                }
+            }
+
+            let opts = IndexOptions {
+                max_concurrency: payload
+                    .get("options")
+                    .and_then(|o| o.get("max_concurrency"))
+                    .and_then(|v| v.as_u64())
+                    .map(|v| v as usize)
+                    .unwrap_or_else(num_cpus::get),
+                explicit_files,
+            };
+
+            // spawn job thread
+            thread::spawn(move || {
+                let ev_start = Event {
+                    protocol_version: "1.0.0".into(),
+                    r#type: "event".into(),
+                    event: "job_started".into(),
+                    job_id: Some(job_id.clone()),
+                    payload: Some(json!({"total_files":0})),
+                };
+                jsonl::write_event(&ev_start);
+
+                // Emit file_listed events (streaming) before running indexer
+                if let Some(ref files) = opts.explicit_files {
+                    crate::infra::walker::emit_file_listed_from_records(&files.iter().map(|p| crate::domain::types::FileRecord { path: p.clone(), size: 0, mtime: 0, hash: "".to_string(), language: None }).collect::<Vec<_>>(), Some(job_id.clone()));
+                } else {
+                    let scan_opts = crate::infra::walker::ScanOptions::new(&path);
+                    let _ = crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
+                }
+
+                let indexer = Indexer::new();
+                let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
+                match result {
+                    Ok(result) => {
+                        for chunk in &result.chunks {
+                            let ev = Event {
+                                protocol_version: "1.0.0".into(),
+                                r#type: "event".into(),
+                                event: "chunk_emitted".into(),
+                                job_id: Some(job_id.clone()),
+                                payload: Some(json!({
+                                    "chunk_id": chunk.id,
+                                    "chunk_kind": "Symbol",
+                                    "file": chunk.file_path,
+                                    "language": chunk.language,
+                                    "symbol_id": chunk.symbol_id,
+                                    "start_line": chunk.start_line,
+                                    "end_line": chunk.end_line,
+                                    "text": chunk.text,
+                                    "chunk_md5": chunk.md5,
+                                    "size": chunk.size
+                                })),
+                            };
+                            jsonl::write_event(&ev);
+                        }
+
+                        let ev_done = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "job_completed".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(
+                                json!({"processed": result.chunks.len(), "duration_ms": 0}),
+                            ),
+                        };
+                        jsonl::write_event(&ev_done);
+                    }
+                    Err(err) => {
+                        let ev_error = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "error".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(json!({
+                                "code": "WALKER_ERROR",
+                                "message": format!("walker failed: {:?}", err),
+                                "recoverable": false
+                            })),
+                        };
+                        jsonl::write_event(&ev_error);
+
+                        let ev_done = Event {
+                            protocol_version: "1.0.0".into(),
+                            r#type: "event".into(),
+                            event: "job_completed".into(),
+                            job_id: Some(job_id.clone()),
+                            payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                        };
+                        jsonl::write_event(&ev_done);
+                    }
+                }
+            });
         }
         "resume" => {
             // emit a resumed status (pause/resume handling is managed in job loop)
