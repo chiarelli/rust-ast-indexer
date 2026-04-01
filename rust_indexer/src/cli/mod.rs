@@ -8,7 +8,17 @@ use crate::application::indexer::{IndexOptions, Indexer};
 use crate::application::protocol::{Command, Event};
 use crate::infra::jsonl;
 
-pub fn run_cli() {
+use std::sync::Arc;
+
+use crate::app::bootstrap::{ApplicationContext, Config, init_context};
+
+pub fn run_cli_default() {
+    let cfg = Config { max_concurrency: num_cpus::get(), max_queue_size: 100 };
+    let ctx = init_context(cfg);
+    run_cli(ctx);
+}
+
+pub fn run_cli(ctx: Arc<ApplicationContext>) {
     // emit capabilities at startup
     let ev = Event {
         protocol_version: "1.0.0".into(),
