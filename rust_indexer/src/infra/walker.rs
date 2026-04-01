@@ -73,7 +73,11 @@ impl WalkerError {
 
 pub fn walk_path(opts: &ScanOptions) -> Result<Vec<FileRecord>, WalkerError> {
     let mut files = Vec::new();
-    walk_with_callback(opts, |record| files.push(record))?;
+    walk_with_callback(opts, |res| {
+        if let Ok(record) = res {
+            files.push(record)
+        }
+    })?;
     files.sort_by(|a, b| a.path.cmp(&b.path));
     Ok(files)
 }
@@ -82,17 +86,32 @@ pub fn emit_file_listed_events(
     opts: &ScanOptions,
     job_id: Option<String>,
 ) -> Result<(), WalkerError> {
-    walk_with_callback(opts, |record| {
-        let ev = Event {
-            protocol_version: "1.0.0".into(),
-            r#type: "event".into(),
-            event: "file_listed".into(),
-            job_id: job_id.clone(),
-            payload: Some(json!({
-                "file": record
-            })),
-        };
-        jsonl::write_event(&ev);
+    walk_with_callback(opts, |res| match res {
+        Ok(record) => {
+            let ev = Event {
+                protocol_version: "1.0.0".into(),
+                r#type: "event".into(),
+                event: "file_listed".into(),
+                job_id: job_id.clone(),
+                payload: Some(json!({
+                    "file": record
+                })),
+            };
+            jsonl::write_event(&ev);
+        }
+        Err((path, reason)) => {
+            let ev = Event {
+                protocol_version: "1.0.0".into(),
+                r#type: "event".into(),
+                event: "file_invalid".into(),
+                job_id: job_id.clone(),
+                payload: Some(json!({
+                    "path": path,
+                    "reason": reason
+                })),
+            };
+            jsonl::write_event(&ev);
+        }
     })
 }
 
@@ -113,7 +132,7 @@ pub fn emit_file_listed_from_records(records: &[FileRecord], job_id: Option<Stri
 
 fn walk_with_callback<F>(opts: &ScanOptions, mut handler: F) -> Result<(), WalkerError>
 where
-    F: FnMut(FileRecord),
+    F: FnMut(Result<FileRecord, (String, String)>),
 {
     let include_set = build_globset(&opts.include_patterns)?;
     let mut ignore_patterns = opts.ignore_patterns.clone();
@@ -143,14 +162,33 @@ where
             }
         }
 
+        // Detect binary/non-utf8 files early
+        match is_likely_text(entry.path()) {
+            Ok(true) => {}
+            Ok(false) => {
+                handler(Err((relative_path, "non_utf8_or_binary".to_string())));
+                continue;
+            }
+            Err(_) => {
+                handler(Err((relative_path, "io_error".to_string())));
+                continue;
+            }
+        }
+
         let metadata = match entry.metadata() {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(_) => {
+                handler(Err((relative_path, "io_error".to_string())));
+                continue;
+            }
         };
 
         let hash = match hash_file(entry.path()) {
             Ok(value) => value,
-            Err(_) => continue,
+            Err(_) => {
+                handler(Err((relative_path, "io_error".to_string())));
+                continue;
+            }
         };
 
         let mtime = metadata
@@ -160,16 +198,35 @@ where
             .map(|duration| duration.as_secs())
             .unwrap_or(0);
 
-        handler(FileRecord {
+        handler(Ok(FileRecord {
             path: relative_path,
             size: metadata.len(),
             mtime,
             hash,
             language: detect_language(entry.path()),
-        });
+        }));
     }
 
     Ok(())
+}
+
+fn is_likely_text(path: &Path) -> io::Result<bool> {
+    use std::fs::File;
+    use std::io::Read;
+
+    let mut file = File::open(path)?;
+    let mut buf = [0u8; 4096];
+    let n = file.read(&mut buf)?;
+    if n == 0 {
+        return Ok(true);
+    }
+    if buf[..n].contains(&0) {
+        return Ok(false);
+    }
+    match std::str::from_utf8(&buf[..n]) {
+        Ok(_) => Ok(true),
+        Err(_) => Ok(false),
+    }
 }
 
 fn load_ignore_patterns(root: &Path) -> Vec<String> {
