@@ -15,7 +15,7 @@ impl ParserPool {
     pub fn new(size: usize) -> Self {
         let mut parsers = Vec::with_capacity(size);
         for _ in 0..size {
-            let mut parser = Parser::new();
+            let parser = Parser::new();
             // when parsing feature enabled, set the language; otherwise leave parser unconfigured
             #[cfg(feature = "parsing")] {
                 use tree_sitter::Language as TS_Language;
