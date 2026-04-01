@@ -3,7 +3,7 @@
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use tree_sitter::{Parser, Language};
+use tree_sitter::Parser;
 #[cfg(feature = "parsing")] use tree_sitter_rust;
 
 pub struct ParserPool {
@@ -15,7 +15,7 @@ impl ParserPool {
     pub fn new(size: usize) -> Self {
         let mut parsers = Vec::with_capacity(size);
         for _ in 0..size {
-            let mut parser = Parser::new();
+            let parser = Parser::new();
             // when parsing feature enabled, set the language; otherwise leave parser unconfigured
             #[cfg(feature = "parsing")] {
                 let lang: Language = tree_sitter_rust::language();
