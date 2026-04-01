@@ -263,6 +263,45 @@ O call graph registra chamadas diretas entre funções/símbolos detectáveis es
 ### Description
 Chunks são a unidade de saída textual para indexação semântica no caller.
 
+### Implementation status
+- Schema and conversion: implemented in `rust_indexer/src/application/protocol.rs` (types: `ChunkEventPayload`, `ChunkKind`, `From<domain::types::Chunk>` mapping).
+- JSONL emission helpers: `rust_indexer/src/infra/jsonl.rs` (`build_chunk_event`, `write_chunk_event`) implemented and tested.
+- Indexer wiring: both parallel and serial index paths emit `chunk_emitted` events:
+  - Parallel: `rust_indexer/src/application/indexer.rs::index_path_parallel` emits per-chunk events while processing with Rayon (accepts `job_id: Option<String>`).
+  - Serial: `rust_indexer/src/application/indexer.rs::index_path` emits per-chunk events for consistency.
+- Tests:
+  - Unit tests for mapping and builder: `rust_indexer/src/application/protocol_tests.rs` and `rust_indexer/src/infra/jsonl.rs` test module.
+  - Payload serialization unit test: `rust_indexer/tests/protocol_chunk_payload.rs`.
+  - Smoke integration test verifying binary stdout contains `chunk_emitted`: `rust_indexer/tests/smoke_chunk_emitted_stdout.rs`.
+
+### Technical design
+- Regra base:
+  - se `file_lines < 200`: emitir chunk do arquivo inteiro + chunks por símbolo.
+  - caso contrário: emitir apenas chunks por símbolo.
+- Cada chunk inclui `chunk_md5`, `size`, `language`, `chunk_kind` e `symbol_id` opcional.
+- Chunks são emitidos incrementalmente por JSONL.
+
+### Data structures
+- `Chunk { id, chunk_kind, file_path, language, symbol_id, start_line, end_line, text, chunk_md5, size }`
+- `ChunkKind = FullFile | Symbol | Contextual`
+
+### Algorithms
+- Contar linhas do arquivo.
+- Selecionar ranges dos símbolos.
+- Gerar texto do chunk, calcular hash e tamanho.
+- Emitir `chunk_emitted` por chunk.
+
+### Open questions
+- Nenhuma no momento.
+
+### Assumptions
+- O caller pode filtrar ou deduplicar chunks usando `chunk_md5`.
+
+
+
+### Description
+Chunks são a unidade de saída textual para indexação semântica no caller.
+
 ### Technical design
 - Regra base:
   - se `file_lines < 200`: emitir chunk do arquivo inteiro + chunks por símbolo.
