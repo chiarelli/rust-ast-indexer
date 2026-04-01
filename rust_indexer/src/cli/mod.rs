@@ -9,6 +9,16 @@ use crate::application::indexer::{Indexer, IndexOptions};
 use crate::infra::jsonl;
 
 pub fn run_cli() {
+    // emit capabilities at startup
+    let ev = Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "capabilities".into(),
+        job_id: None,
+        payload: Some(json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]})),
+    };
+    jsonl::write_event(&ev);
+
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         match line {
@@ -18,6 +28,15 @@ pub fn run_cli() {
                 // delegate to dispatcher module
                 let handled = crate::cli::dispatcher::dispatch_line(l);
                 if handled { continue; }
+
+                // if dispatcher didn't handle, try to parse and forward to internal handler
+                if let Some(cmd) = jsonl::read_command(l) {
+                    handle_command(cmd);
+                } else {
+                    // malformed JSON already handled by dispatcher, but fallback emit
+                    let ev = Event { protocol_version: "1.0.0".into(), r#type: "event".into(), event: "error".into(), job_id: None, payload: Some(json!({"code":"INVALID_COMMAND","message":"failed to parse command","recoverable":false})) };
+                    jsonl::write_event(&ev);
+                }
             }
             Err(_) => break,
         }

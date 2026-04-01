@@ -6,7 +6,7 @@ use serde_json::json;
 // Returns true if handled (either dispatched or error emitted), false otherwise.
 pub fn dispatch_line(line: &str) -> bool {
     if let Some(cmd) = jsonl::read_command(line) {
-        return dispatch_cmd(&cmd);
+        dispatch_cmd(&cmd)
     } else {
         let ev = Event {
             protocol_version: "1.0.0".into(),
@@ -16,7 +16,7 @@ pub fn dispatch_line(line: &str) -> bool {
             payload: Some(json!({"code":"INVALID_COMMAND","message":"failed to parse command","recoverable":false})),
         };
         jsonl::write_event(&ev);
-        return true;
+        true
     }
 }
 
