@@ -5,4 +5,4 @@ doc/planning_state.json
 AGENTS.md
 
 doc/features/
-!doc/features/feature_core_indexing.md
+!doc/features/feature_tree-sitter-adapters.md
