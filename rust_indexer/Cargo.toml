@@ -27,7 +27,7 @@ version = "0.20"
 optional = true
 
 # concurrency-friendly registry
-dashmap = "5.4"
+dashmap = { version = "5.4", features = ["serde_impls"] }
 
 [dev-dependencies]
 assert_cmd = "2.0"

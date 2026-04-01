@@ -3,9 +3,6 @@ use std::sync::Arc;
 use crate::infra::parser_pool::ParserPool;
 
 use dashmap::DashMap;
-use anyhow::Result;
-
-use crate::adapters::LanguageAdapter;
 
 pub struct Config {
     pub max_concurrency: usize,
@@ -13,7 +10,7 @@ pub struct Config {
 }
 
 pub struct Registry {
-    inner: DashMap<String, Arc<dyn LanguageAdapter>>,
+    inner: DashMap<String, Arc<dyn crate::adapters::LanguageAdapter>>,
 }
 
 impl Registry {
@@ -21,11 +18,11 @@ impl Registry {
         Self { inner: DashMap::new() }
     }
 
-    pub fn register(&self, lang: &str, adapter: Arc<dyn LanguageAdapter>) {
+    pub fn register(&self, lang: &str, adapter: Arc<dyn crate::adapters::LanguageAdapter>) {
         self.inner.insert(lang.to_string(), adapter);
     }
 
-    pub fn get(&self, lang: &str) -> Option<Arc<dyn LanguageAdapter>> {
+    pub fn get(&self, lang: &str) -> Option<Arc<dyn crate::adapters::LanguageAdapter>> {
         self.inner.get(lang).map(|v| v.value().clone())
     }
 }
