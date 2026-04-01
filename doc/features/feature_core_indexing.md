@@ -28,8 +28,8 @@ Descrição: construir esqueleto do binário, garantir protocolo JSONL estável,
       - atividade: feat(git): integrate infra::git with CLI incremental_index and IndexOptions explicit_files (completed)
       - atividade: test(git): add unit tests for git helper and integration smoke for incremental_index (completed)
     - task: tests/ci
-      - atividade: chore(ci): add GitHub Actions skeleton (fmt/clippy/test)
-      - atividade: test(smoke): add smoke test for list_languages + index_path
+      - atividade: chore(ci): add GitHub Actions skeleton (fmt/clippy/test) (completed)
+      - atividade: test(smoke): add smoke test for list_languages + index_path (completed)
 
 Cada atividade corresponde a um commit com o título no formato: type(scope): short description
 Exemplo: `feat(walker): implement walkdir file discovery`.
