@@ -440,6 +440,15 @@ A base deve ser altamente testada, cobrindo cenários felizes, tristes, smoke e 
 - Cobrir APIs públicas e helpers privados relevantes.
 - Smoke tests executam o binário e validam `list_languages`, `index_path`, `job_completed`, `file_invalid`, `resume`.
 
+### Test Failure Policy
+- Falhas em testes não devem ser tratadas automaticamente apenas "fazendo o teste passar".
+- Primeiro passo: investigar se a falha é uma regressão do código de produção (ex.: alteração recente que quebrou comportamento esperado).
+  - Se for regressão, corrigir o código de produção de forma a restaurar o comportamento esperado e então reexecutar os testes.
+- Se não for regressão, verificar se os testes são mutuamente conflitantes ou dependem de estado/ordem de execução instável.
+  - Em caso de testes conflitantes (mutually exclusive) ou flaky, isolar causa raiz e refatorar os testes para torná-los determinísticos.
+- Nunca remover testes existentes sem uma justificativa documentada que envolva remoção ou alteração explícita de funcionalidade; qualquer remoção/alteração de teste deve ser acompanhada por documentação atualizando a especificação e changelog.
+- Quando for necessário alterar um teste (por exemplo, refletindo uma mudança de especificação), o ticket/commit deve mencionar a decisão e a razão, e incluir testes adicionais que cubram o novo comportamento.
+
 ### Open questions
 - Nenhuma no momento.
 
