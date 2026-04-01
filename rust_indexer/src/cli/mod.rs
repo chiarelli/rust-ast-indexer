@@ -13,7 +13,7 @@ use std::sync::Arc;
 use crate::app::bootstrap::{ApplicationContext, Config, init_context};
 
 pub fn run_cli_default() {
-    let cfg = Config { max_concurrency: num_cpus::get(), max_queue_size: 100 };
+    let cfg = Config::load();
     let ctx = init_context(cfg);
     run_cli(ctx);
 }
@@ -135,7 +135,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|o| o.get("max_concurrency"))
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
-                    .unwrap_or_else(num_cpus::get),
+                    .unwrap_or(ctx.config.max_concurrency),
                 explicit_files: None,
             };
 
@@ -378,7 +378,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|o| o.get("max_concurrency"))
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
-                    .unwrap_or_else(num_cpus::get),
+                    .unwrap_or(ctx.config.max_concurrency),
                 explicit_files,
             };
 
