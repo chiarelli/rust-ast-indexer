@@ -59,6 +59,7 @@ impl Indexer {
         &self,
         path: &str,
         opts: IndexOptions,
+        job_id: Option<String>,
     ) -> Result<IndexResult, WalkerError> {
         let scan_opts = ScanOptions::new(path);
         let files = walk_path(&scan_opts)?;
@@ -110,7 +111,10 @@ impl Indexer {
                 }
 
                 // Send chunk to collector
-                let _ = s.send((chunk, file.clone()));
+                let _ = s.send((chunk.clone(), file.clone()));
+                // Emit chunk_emitted event for caller
+                let payload = crate::application::protocol::ChunkEventPayload::from(chunk);
+                crate::infra::jsonl::write_chunk_event(job_id.clone(), &payload);
             });
 
         drop(tx);
@@ -169,7 +173,7 @@ mod tests {
         let indexer = Indexer::new();
         let opts = IndexOptions { max_concurrency: 2 };
         let result = indexer
-            .index_path_parallel(dir.path().to_str().unwrap(), opts)
+            .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
             .unwrap();
 
         assert_eq!(result.files.len(), 1);
