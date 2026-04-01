@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ "**" ]
+    branches: [ main, feature/** ]
   pull_request:
-    branches: [ "**" ]
+    branches: [ main ]
 
 jobs:
   build:
@@ -33,14 +33,20 @@ jobs:
       - name: Run clippy (deny warnings)
         run: cargo clippy --all-targets --all-features -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace --all-features --no-fail-fast
-      - name: Run smoke streaming tests
+      - name: Run unit tests
+        run: cargo test --workspace --all-features --locked --verbose
+      - name: Build binary for smoke tests
+        run: cargo build --bins --release
+
+      - name: Run smoke tests (incremental_index)
         run: |
+          git --version
           cd rust_indexer
-          cargo test --test smoke_streaming -- --nocapture
+          cargo test --test smoke_incremental_git -- --nocapture
 
       - name: Verify commit messages
         run: |
-          chmod +x ./scripts/verify_commit_msgs.sh || true
-          ./scripts/verify_commit_msgs.sh || true
+          if [ -f ./scripts/verify_commit_msgs.sh ]; then
+            chmod +x ./scripts/verify_commit_msgs.sh || true
+            ./scripts/verify_commit_msgs.sh || true
+          fi
