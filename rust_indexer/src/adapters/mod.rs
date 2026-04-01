@@ -12,7 +12,9 @@ pub trait LanguageAdapter: Send + Sync + 'static {
 use std::collections::HashMap;
 use std::sync::RwLock;
 
-lazy_static::lazy_static! {
+use lazy_static::lazy_static;
+
+lazy_static! {
     static ref ADAPTERS: RwLock<HashMap<String, Box<dyn LanguageAdapter>>> = RwLock::new(HashMap::new());
 }
 
