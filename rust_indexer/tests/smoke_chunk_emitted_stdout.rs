@@ -1,7 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
-use std::io::Write;
 
 #[test]
 fn binary_emits_chunk_emitted_in_stdout_for_index_path() {
@@ -20,7 +19,7 @@ fn binary_emits_chunk_emitted_in_stdout_for_index_path() {
         "payload": {"path": dir.path().to_str().unwrap(), "options": {"max_concurrency": 1}}
     });
 
-    let mut child = cmd.write_stdin(command.to_string() + "\n").assert();
+    let child = cmd.write_stdin(command.to_string() + "\n").assert();
 
     // Expect stdout to eventually contain chunk_emitted event
     child.success().stdout(predicate::str::contains("\"event\":\"chunk_emitted\""));

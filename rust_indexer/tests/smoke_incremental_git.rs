@@ -1,7 +1,6 @@
 use assert_cmd::Command;
 use predicates::prelude::*;
 use tempfile::tempdir;
-use std::io::Write;
 
 #[test]
 fn binary_indexes_files_from_git_tracked_and_diff() {
@@ -35,6 +34,6 @@ fn binary_indexes_files_from_git_tracked_and_diff() {
         "payload": {"path": root.to_str().unwrap(), "use_git": true, "git_range": {"from": "v1", "to": "HEAD"}, "options": {"max_concurrency": 1}}
     });
 
-    let mut child = cmd.write_stdin(command.to_string() + "\n").assert();
+    let child = cmd.write_stdin(command.to_string() + "\n").assert();
     child.success().stdout(predicate::str::contains("\"event\":\"chunk_emitted\""));
 }
