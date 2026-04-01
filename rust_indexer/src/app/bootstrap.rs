@@ -14,9 +14,15 @@ pub struct Registry {
     inner: RwLock<HashMap<String, Arc<dyn crate::adapters::LanguageAdapter>>>,
 }
 
+impl Default for Registry {
+    fn default() -> Self {
+        Self { inner: RwLock::new(HashMap::new()) }
+    }
+}
+
 impl Registry {
     pub fn new() -> Self {
-        Self { inner: RwLock::new(HashMap::new()) }
+        Self::default()
     }
 
     pub fn register(&self, lang: &str, adapter: Arc<dyn crate::adapters::LanguageAdapter>) {
@@ -39,6 +45,13 @@ pub struct ApplicationContext {
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     let registry = Arc::new(Registry::new());
     let parser_pool = Arc::new(ParserPool::new(config.max_concurrency));
+
+    // register built-in adapters into the registry
+    #[cfg(feature = "parsing")]
+    {
+        // rust adapter registers itself into the provided registry
+        crate::adapters::rust::register_to(&registry);
+    }
 
     Arc::new(ApplicationContext { registry, parser_pool, config })
 }
