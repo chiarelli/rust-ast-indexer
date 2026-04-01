@@ -69,6 +69,8 @@ impl Indexer {
 
         let (tx, rx) = mpsc::channel();
 
+        let base_path = std::sync::Arc::new(std::path::PathBuf::from(path));
+
         // Use Rayon thread pool to process files in parallel
         files
             .par_iter()
@@ -79,8 +81,11 @@ impl Indexer {
                 let parser_arc = pool.get(idx);
                 let mut parser = parser_arc.lock().unwrap();
 
+                // Build full path to file by joining base path and relative file path
+                let full_path = base_path.join(&file.path);
+
                 // Parse file content using tree-sitter (if available for language)
-                let text = std::fs::read_to_string(&file.path).unwrap_or_default();
+                let text = std::fs::read_to_string(&full_path).unwrap_or_default();
                 let tree = parser.parse(&text, None);
 
                 // For now, generate a simple chunk using the file content's first line
@@ -171,5 +176,9 @@ mod tests {
         assert_eq!(result.chunks.len(), 1);
         let file = &result.files[0];
         assert_eq!(file.path, "lib.rs");
+        // verify that parser produced a chunk containing the first line
+        let chunk = &result.chunks[0];
+        assert_eq!(chunk.file_path, "lib.rs");
+        assert!(chunk.text.starts_with("fn main"));
     }
 }

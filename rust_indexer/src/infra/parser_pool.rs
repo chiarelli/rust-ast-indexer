@@ -29,3 +29,20 @@ impl ParserPool {
         Arc::clone(&self.parsers[i])
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parser_pool_parses_simple_rust() {
+        let pool = ParserPool::new(2);
+        let parser_arc = pool.get(0);
+        let mut parser = parser_arc.lock().unwrap();
+
+        let src = "fn main() { println!(\"hello\"); }";
+        let tree = parser.parse(src, None);
+        assert!(tree.is_some());
+    }
+}
+
