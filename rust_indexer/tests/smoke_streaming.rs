@@ -75,6 +75,9 @@ fn smoke_index_path_streams_file_listed_events() {
     let _ = child.kill();
     let _ = child.wait();
 
-    assert!(saw_file_listed >= 2, "expected at least two file_listed events");
+    assert!(
+        saw_file_listed >= 2,
+        "expected at least two file_listed events"
+    );
     assert!(got_completed, "did not receive job_completed");
 }

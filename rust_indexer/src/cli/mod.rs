@@ -134,7 +134,8 @@ fn handle_command(cmd: Command) {
 
                 // Emit file_listed events (streaming) before running indexer
                 let scan_opts = crate::infra::walker::ScanOptions::new(&path);
-                let _ = crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
+                let _ =
+                    crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
 
                 let indexer = Indexer::new();
                 let result = indexer.index_path(&path, opts);
