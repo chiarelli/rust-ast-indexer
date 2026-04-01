@@ -31,8 +31,9 @@ mod tests {
 
     #[test]
     fn registry_register_and_get() {
-        register_adapter("dummy", Box::new(DummyAdapter));
-        let got = get_adapter("dummy").expect("adapter should be present");
+        let ctx = crate::app::test_bootstrap::test_context();
+        ctx.registry.register("dummy", std::sync::Arc::new(DummyAdapter));
+        let got = ctx.registry.get("dummy").expect("adapter should be present");
         let parsed = got.parse_source("x").unwrap();
         assert_eq!(parsed.language, "dummy");
     }

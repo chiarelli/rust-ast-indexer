@@ -28,8 +28,8 @@ mod rust_adapter {
     }
 
     // register at init when feature enabled
-    pub fn register() {
-        crate::adapters::register_adapter("rust", Box::new(RustAdapter::new()));
+    pub fn register(registry: &crate::app::bootstrap::Registry) {
+        crate::register_language_adapter!(registry, "rust", RustAdapter::new());
     }
 }
 
