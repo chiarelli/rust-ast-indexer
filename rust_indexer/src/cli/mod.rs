@@ -55,6 +55,11 @@ pub fn run_cli() {
             Err(_) => break,
         }
     }
+
+    // Give spawned background job threads a short grace period to emit events before exiting.
+    // This keeps the binary usable as a short-lived child process in smoke tests.
+    std::thread::sleep(std::time::Duration::from_millis(100));
+
 }
 
 #[allow(dead_code)]
