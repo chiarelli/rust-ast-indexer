@@ -1,581 +1,101 @@
-# Rust Codebase Indexing Engine — Specification
+# Indexer specification — Git-based incremental indexing
 
-## Project Overview
+This document describes the behavior of the `incremental_index` command and the Git integration used by the indexer (`crate::infra::git`). It specifies payload fields, expected semantics, events emitted by the CLI, error handling, and examples.
 
-### Description
-A Rust-based indexing engine executed as a standalone binary over stdio. It scans repositories, parses source files with Tree-sitter, extracts symbols, builds import and call graphs, generates semantic chunks, and streams structured JSONL results to a Node.js caller. The engine is stateless: it does not persist results, generate embeddings, or decide reindex cadence.
+## Purpose
 
-### Technical design
-- Primary integration: executable binary spawned by Node.js via `child_process`.
-- Protocol: JSONL over stdio.
-- Parsing: Tree-sitter grammars per language.
-- Parallelism: Rayon for file-level parallel parsing and chunk generation.
-- Hashing: chunk and file metadata include deterministic hashes for caller-side deduplication.
+Enable incremental indexing driven by Git metadata so callers can request indexing only for files tracked by Git or for files changed between two refs. This reduces work and enables fast CI/agent workflows.
 
-### Data structures
-- `FileRecord { path, size, mtime, hash, language }`
-- `Symbol { id, kind, name, qualified_name, file_path, range, signature, visibility, parent_symbol_id }`
-- `Chunk { id, chunk_kind, file_path, language, symbol_id, start_line, end_line, text, chunk_md5, size }`
-- `IndexJob { job_id, path, language_filters, ignore_patterns, options }`
+## Command: `incremental_index`
 
-### Algorithms
-- Walk repository with ignore support.
-- Detect language by extension and optional fallback heuristics.
-- Parse files, extract symbols/imports/calls, then chunk.
-- Stream events incrementally instead of accumulating full in-memory results.
+The CLI accepts a JSONL `Command` whose `command` field equals `incremental_index`. The `payload` object supports the following fields:
 
-### Open questions
-- Nenhuma no momento.
+- `path` (string, required): repository/workspace path where the indexer should run.
+- `use_git` (bool, optional, default: false): if true, the CLI will consult Git to discover the set of files to index instead of scanning the filesystem.
+- `git_range` (object, optional): when present and `use_git=true`, it should contain `from` and `to` strings (refs / tags / commits) describing the git range to diff. If both `from` and `to` are present, the indexer will index files reported by `git diff --name-only <from> <to>`.
+- `files` (array[string], optional): explicit list of file paths to index. Used when `use_git=false` or as an explicit override.
+- `options` (object, optional): indexer options, such as `max_concurrency`.
 
-### Assumptions
-- O chamador gerencia persistência, embeddings e política de reindex.
-- O binário poderá ser executado em ambientes com Git instalado quando `use_git=true`.
+Example payloads:
 
-## Goals and Non-goals
+- Full tracked files:
 
-### Description
-Define claramente o que a engine faz e o que deliberadamente fica fora de escopo.
+```json
+{"path":"/repo", "use_git":true}
+```
 
-### Technical design
-- Goals:
-  - Indexar rapidamente múltiplas linguagens suportadas.
-  - Emitir saída estruturada e estável para consumo por Node.js.
-  - Gerar símbolos, import graph, call graph e chunks semânticos.
-  - Suportar processamento incremental quando o caller fornecer arquivos ou solicitar diff via Git.
-- Non-goals:
-  - Não armazenar dados internamente.
-  - Não gerar embeddings.
-  - Não executar busca semântica.
-  - Não decidir automaticamente quando reindexar.
+- Git diff between tags:
 
-### Data structures
-- `GoalSet { goals, non_goals }`
+```json
+{"path":"/repo", "use_git":true, "git_range": {"from":"v1","to":"HEAD"}}
+```
 
-### Algorithms
-- Aplicar validação de escopo em comandos recebidos.
-- Rejeitar requests fora do contrato do protocolo.
+- Explicit file list (no git):
 
-### Open questions
-- Nenhuma no momento.
+```json
+{"path":"/repo", "files":["src/lib.rs","README.md"], "options":{"max_concurrency":4}}
+```
 
-### Assumptions
-- O chamador aceita responsabilidade por armazenamento e orquestração.
+## Behavior and semantics
 
-## System Architecture
+1. Validate `payload.path` is present and non-empty. If missing, emit an `error` event with code `INVALID_PAYLOAD` and abort the job.
+2. Determine file set:
+   - If `use_git=true` and `git_range` contains both `from` and `to`, call `infra::git::get_git_diff_files(path, from, to)` to obtain the list of files changed between refs.
+   - If `use_git=true` and `git_range` is absent or invalid, call `infra::git::emit_git_tracked_files(path)` to obtain all tracked files.
+   - If `use_git=false` and the payload contains `files`, use that explicit list.
+   - Otherwise, fall back to a full filesystem scan using `walk_path`.
+3. If the `infra::git` call returns an error, emit an `error` event with code `GIT_ERROR`, include a helpful `message` describing the failure, then emit `job_completed` with `processed: 0` and `errors: 1`.
+4. Construct an `IndexOptions` instance including `explicit_files: Option<Vec<String>>` when the file list was obtained from Git or from the payload.
+5. Emit `job_started` event (with `job_id` when present) before indexing, and stream `file_listed` events for each discovered file (see `emit_file_listed_from_records` for the explicit-files case or `emit_file_listed_events` for filesystem scan).
+6. Run indexer (`index_path_parallel`) with provided options. The indexer will emit `chunk_emitted` events as chunks are processed, and a final `job_completed` event with `processed` and `duration_ms`.
 
-### Description
-Arquitetura DDD-lite com separação entre domínio, aplicação, infraestrutura e CLI/binário.
+## Error handling
 
-### Technical design
-- `domain/`: tipos centrais, contratos, regras de extração.
-- `application/`: casos de uso (`index_path`, `list_languages`, `incremental_index`, `status`, `resume`).
-- `infra/`: filesystem walking, parser pool, integração shell git, IO JSONL.
-- `cli/`: loop stdio, parsing de comandos e streaming de eventos.
-- Entrega principal: binário executável. Estrutura interna pode continuar modularizada como crate para testabilidade.
-- Compatibilidade MCP: protocolo modelado para ser facilmente adaptável a MCP stdio no futuro.
+- Missing `git` binary or `not a git repository` errors are surfaced as `GIT_ERROR` with `recoverable:false` and will end the job early.
+- Invalid `git_range` shapes fall back to tracked files, but if `emit_git_tracked_files` fails the job will error as above.
+- Any `WalkerError` returned by the scanning/walking layer is reported as `WALKER_ERROR` and will result in `job_completed` with `errors:1`.
 
-### Data structures
-- `JobStatus { job_id, state, processed_files, total_files, queued_events, is_paused, errors }`
-- `Capabilities { version, protocol_version, languages, features }`
+## Event stream contract
 
-### Algorithms
-- Startup emite `capabilities`.
-- Loop principal lê JSONL, valida, despacha comando e transmite eventos.
-- Operações longas executam por job identificado por `job_id`.
+The command should produce a deterministic sequence of events on success:
 
-### Open questions
-- Nenhuma no momento.
+1. `job_started` { job_id }
+2. multiple `file_listed` events (stream)
+3. multiple `chunk_emitted` events (stream)
+4. `job_completed` { processed, duration_ms }
 
-### Assumptions
-- O chamador é um processo Node.js controlando o ciclo de vida do binário.
+On Git errors, the sequence is:
 
-## Repository Scanning
+1. `error` { code: "GIT_ERROR", message }
+2. `job_completed` { processed: 0, errors: 1 }
 
-### Description
-A engine faz varredura do repositório e produz a lista efetiva de arquivos candidatos à indexação.
+## Notes and limitations
 
-### Technical design
-- Usa `Walkdir` ou equivalente.
-- Respeita `ignore_patterns` do caller.
-- Opcionalmente respeita `.gitignore` e `.crushignore`.
-- Suporta `list_files` e `dry_run` sem parsing.
-- Suporta `incremental_index` com lista explícita de arquivos ou `use_git=true`.
+- File paths returned by the Git helper are relative to the repository root and are consumed as-is by the indexer. Callers should ensure the `path` argument is the repository root (or an appropriate subpath) to produce correct relative paths.
+- The current implementation uses the system `git` binary. CI environments must provide `git` in PATH for `use_git=true` flows and for unit tests that exercise `infra::git`.
+- For simplicity the first iteration uses placeholders for `FileRecord` metadata when explicit file lists are provided. The indexer computes or fills missing metadata during processing.
 
-### Data structures
-- `ScanRequest { path, include_patterns, ignore_patterns, use_git, git_range }`
-- `GitRange { from, to }`
+## Examples
 
-### Algorithms
-- Caminho normal: varredura recursiva + filtros.
-- Caminho incremental: usar lista explícita do caller; se `use_git=true`, executar `git diff --name-only` via shell git.
-- Normalizar caminhos relativos ao root do job.
+- Request incremental indexing of files changed since tag `v1`:
 
-### Open questions
-- Nenhuma no momento.
+```json
+{
+  "command": "incremental_index",
+  "job_id": "job-123",
+  "payload": { "path": ".", "use_git": true, "git_range": { "from": "v1", "to": "HEAD" } }
+}
+```
 
-### Assumptions
-- Repositórios usam layout de arquivos compatível com scanning recursivo.
-- `git` estará disponível no PATH quando `use_git=true`.
+- Request indexing of tracked files only:
 
-## Parallel Processing (Rayon Strategy)
+```json
+{
+  "command": "incremental_index",
+  "payload": { "path": ".", "use_git": true }
+}
+```
 
-### Description
-O engine usa Rayon para maximizar throughput em máquinas multicore, mantendo isolamento de estado e previsibilidade operacional.
+## Next steps
 
-### Technical design
-- `rayon::ThreadPoolBuilder` com default em `num_cpus::get()`.
-- `max_concurrency` configurável por comando.
-- `par_iter` por arquivo; operações intra-arquivo permanecem sequenciais para simplificar o uso do parser.
-- Pool de parsers por thread para evitar compartilhamento mutável.
-- Semáforo interno para evitar oversubscription quando caller pedir concorrência acima do hardware.
-- Módulos seguem SOLID: responsabilidades pequenas, traits nas bordas, dependências invertidas.
-
-### Data structures
-- `ThreadPoolConfig { max_threads }`
-- `ParserPool { per_thread_parser }`
-- `BackpressureConfig { max_queue_size, pause_on_full, cancel_support }`
-
-### Algorithms
-- Distribuir arquivos entre workers Rayon.
-- Cada worker obtém parser local ao thread.
-- Resultados são emitidos incrementalmente em ordem de conclusão, não de descoberta.
-- Quando a fila de saída enche, job entra em pausa até `resume`.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Ganho principal virá do paralelismo por arquivo, não por nó AST.
-
-## AST Extraction (Tree-sitter)
-
-### Description
-A extração AST é a base para símbolos, imports, calls e chunking semântico.
-
-### Technical design
-- Cada linguagem suportada terá grammar Tree-sitter específica.
-- A engine expõe apenas uma representação normalizada; detalhes específicos ficam encapsulados em adaptadores por linguagem.
-- Parse errors parciais não cancelam o job inteiro; o arquivo pode produzir erro recoverable.
-
-### Data structures
-- `ParsedFile { language, root_kind, diagnostics }`
-- `SourceRange { start_line, start_col, end_line, end_col }`
-- `LanguageAdapter { parse, extract_symbols, extract_imports, extract_calls }`
-
-### Algorithms
-- Detectar linguagem.
-- Parsear conteúdo em AST.
-- Navegar na AST por queries/visita estruturada por linguagem.
-- Produzir árvore intermediária normalizada para camadas superiores.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- V1 cobre linguagens iniciais: Rust, Go, Python, TypeScript/JavaScript e Java.
-
-## Symbol Extraction
-
-### Description
-A engine extrai símbolos de alto valor para navegação, chunking e grafos.
-
-### Technical design
-- V1 extrai: `module`, `class`, `struct`, `interface`, `enum`, `function`, `method`, `trait`, `type_alias`, `const`.
-- Estrutura normalizada por linguagem.
-- Símbolos carregam nome qualificado, assinatura, escopo e visibilidade quando disponível.
-
-### Data structures
-- `Symbol { id, kind, name, qualified_name, file_path, range, signature, visibility, parent_symbol_id }`
-- `Visibility = Public | Private | Protected | Internal | Unknown`
-
-### Algorithms
-- Percorrer nós AST relevantes por linguagem.
-- Resolver hierarquia pai-filho para composição de `qualified_name`.
-- Produzir `symbol_id` determinístico a partir de caminho + nome qualificado + range.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Símbolos locais muito efêmeros (ex.: variáveis locais) ficam fora da V1.
-
-## Import Graph
-
-### Description
-O import graph registra dependências de arquivo e, quando possível, de símbolos importados.
-
-### Technical design
-- Escopo principal: arquivo → módulo importado.
-- Quando a linguagem permitir, incluir símbolo importado, alias e tipo de import.
-- Resolver parcialmente; ambiguidades marcam `resolved=false`.
-
-### Data structures
-- `ImportEdge { from_file, to_module, imported_symbol, alias, import_kind, location, resolved }`
-- `ImportKind = Named | Default | Wildcard | SideEffect | Relative | Unknown`
-
-### Algorithms
-- Extrair imports pela AST.
-- Normalizar paths/módulos por linguagem.
-- Registrar alias e imports relativos sem exigir resolução total para artefatos externos.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- V1 prioriza fidelidade estrutural sobre resolução completa de módulos externos.
-
-## Call Graph
-
-### Description
-O call graph registra chamadas diretas entre funções/símbolos detectáveis estaticamente.
-
-### Technical design
-- Foco em chamadas AST-based diretas.
-- Chamadas dinâmicas/indiretas são mantidas como `resolved=false` ou `call_kind=dynamic`.
-- Relação principal: caller → callee.
-
-### Data structures
-- `CallEdge { caller_symbol_id, callee_name, callee_symbol_id, call_kind, location, resolved }`
-- `CallKind = Direct | Method | Constructor | External | Dynamic | Unknown`
-
-### Algorithms
-- Identificar contexto do símbolo chamador.
-- Extrair invocações por linguagem.
-- Tentar resolver contra símbolos do mesmo arquivo/projeto; se falhar, preservar `callee_name`.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Dispatch dinâmico e reflexão não serão resolvidos completamente na V1.
-
-## Chunk Generation Strategy
-
-### Description
-Chunks são a unidade de saída textual para indexação semântica no caller.
-
-### Technical design
-- Regra base:
-  - se `file_lines < 200`: emitir chunk do arquivo inteiro + chunks por símbolo.
-  - caso contrário: emitir apenas chunks por símbolo.
-- Cada chunk inclui `chunk_md5`, `size`, `language`, `chunk_kind` e `symbol_id` opcional.
-- Chunks são emitidos incrementalmente por JSONL.
-
-### Data structures
-- `Chunk { id, chunk_kind, file_path, language, symbol_id, start_line, end_line, text, chunk_md5, size }`
-- `ChunkKind = FullFile | Symbol | Contextual`
-
-### Algorithms
-- Contar linhas do arquivo.
-- Selecionar ranges dos símbolos.
-- Gerar texto do chunk, calcular hash e tamanho.
-- Emitir `chunk_emitted` por chunk.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O caller pode filtrar ou deduplicar chunks usando `chunk_md5`.
-
-## Embedding Preparation
-
-### Description
-A engine não gera embeddings, mas produz metadados suficientes para o caller preparar embeddings.
-
-### Technical design
-- Fornecer `chunk_md5`, `size`, `file_path`, `language`, `symbol_id`, `chunk_kind`.
-- Não chamar serviços externos nem modelos locais de embedding.
-
-### Data structures
-- `EmbeddingReadyChunk = Chunk + metadata`
-
-### Algorithms
-- Apenas enriquecer o chunk já gerado com metadados estáveis.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O pipeline de embeddings existe exclusivamente no caller.
-
-## Incremental Indexing
-
-### Description
-O controle de reindex é do caller; a engine apenas executa indexação incremental quando instruída.
-
-### Technical design
-- `incremental_index` aceita:
-  - lista explícita de arquivos,
-  - ou `use_git=true` com `git_range`.
-- A engine não armazena snapshot prévio.
-- O caller decide política de reindex por commit, cron, webhook ou evento local.
-
-### Data structures
-- `IncrementalRequest { path, files, use_git, git_range, options }`
-
-### Algorithms
-- Se `files` vierem preenchidos, usar essa lista.
-- Se `use_git=true`, obter arquivos via shell git.
-- Indexar somente o conjunto resultante.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O caller poderá combinar hashes emitidos com seu storage para deduplicação.
-
-## Database Schema
-
-### Description
-Não há banco interno. Ainda assim, a documentação sugere um schema opcional para o caller.
-
-### Technical design
-- Apenas schema de exemplo; não implementado no engine.
-- Estruturas sugeridas: `files`, `symbols`, `import_edges`, `call_edges`, `chunks`, `embeddings`.
-
-### Data structures
-- `files(id, path, hash, size, language, indexed_at)`
-- `symbols(id, file_id, kind, name, qualified_name, start_line, end_line, signature, visibility, parent_symbol_id)`
-- `import_edges(id, file_id, to_module, imported_symbol, alias, import_kind, start_line)`
-- `call_edges(id, caller_symbol_id, callee_symbol_id, callee_name, call_kind, call_line, resolved)`
-- `chunks(id, file_id, symbol_id, chunk_kind, start_line, end_line, chunk_md5, size, text)`
-- `embeddings(id, chunk_id, provider, model, vector_ref, created_at)`
-
-### Algorithms
-- O caller persiste eventos emitidos pela engine nas tabelas equivalentes.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O schema servirá apenas como referência, não como contrato obrigatório.
-
-## MCP Tooling for Code Navigation
-
-### Description
-A engine será consumida por stdio binário normal, mas o formato será compatível com futura adaptação MCP.
-
-### Technical design
-- V1: JSONL próprio, simples e estável.
-- Compatibilidade MCP: envelopes e capacidades mantidos próximos do estilo MCP para facilitar adapter stdio.
-- Futuro: adapter HTTP/SSE ou MCP puro sem mudar o core do indexador.
-
-### Data structures
-- `Capabilities { features: ["jsonl", "incremental_index", "git_diff", "pause_resume"] }`
-
-### Algorithms
-- Expor `capabilities` suficientemente descritivo para um adapter traduzir comandos/eventos.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Compatibilidade MCP é meta de integração, não protocolo nativo obrigatório na V1.
-
-## Performance Strategy
-
-### Description
-A performance prioriza throughput com uso controlado de CPU e memória.
-
-### Technical design
-- `max_concurrency` default = número de CPUs.
-- `max_queue_size` default = 500 eventos.
-- Linha JSON máxima = 1MB.
-- Pausa automática quando fila de saída enche.
-- Streaming contínuo para reduzir picos de memória.
-
-### Data structures
-- `PerformanceLimits { max_concurrency, max_queue_size, max_json_line_bytes }`
-
-### Algorithms
-- Aplicar limites antes de emitir eventos.
-- Usar semáforo para evitar oversubscription.
-- Emitir `job_progress` periodicamente para o caller monitorar jobs longos.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O caller consumirá stdout em streaming, sem bloquear indefinidamente.
-
-## Error Handling
-
-### Description
-Erros devem ser estruturados, recoverable quando possível, e nunca derrubar o job inteiro sem necessidade.
-
-### Technical design
-- Códigos padronizados: `PARSER_FAIL`, `IO_ERR`, `INVALID_COMMAND`, `BACKPRESSURE`, `CANCELLED`, `INTERNAL_ERR`, `FILE_INVALID`.
-- Arquivos binários/não-UTF8 geram `file_invalid` e o job continua.
-- Comandos inválidos geram `error` estruturado.
-
-### Data structures
-- `ProtocolError { code, message, recoverable, file_path, detail }`
-
-### Algorithms
-- Validar comando antes de iniciar job.
-- Isolar erro por arquivo sempre que possível.
-- Continuar processamento após erros recoverable.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O caller tratará erros recoverable sem reiniciar necessariamente o processo.
-
-## Testing Strategy
-
-### Description
-A base deve ser altamente testada, cobrindo cenários felizes, tristes, smoke e integração.
-
-### Technical design
-- Unit tests em `__testes__` por módulo.
-- Integration/smoke tests em `__tests-it` na raiz.
-- Testes no mesmo módulo com `#[cfg(test)]` para helpers privados.
-- Pipeline CI: `cargo fmt`, `cargo clippy`, `cargo test`, coverage e benchmarks.
-
-### Data structures
-- `TestMatrix { module, happy_path, error_path, smoke, integration }`
-
-### Algorithms
-- Cobrir APIs públicas e helpers privados relevantes.
-- Smoke tests executam o binário e validam `list_languages`, `index_path`, `job_completed`, `file_invalid`, `resume`.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Cobertura próxima de 100% é meta para módulos centrais.
-
-## Deployment Model
-
-### Description
-O artefato principal é um binário executável distribuído ao projeto Node.js consumidor.
-
-### Technical design
-- Entrega: binário compilado por plataforma alvo.
-- Integração: Node.js via `child_process.spawn`.
-- Biblioteca interna pode existir apenas para organização e testes, mas não é o contrato principal.
-
-### Data structures
-- `BinaryDistribution { platform, arch, version }`
-
-### Algorithms
-- Build por target conforme pipeline do projeto principal.
-- Startup emite `capabilities` para negotiation simples.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- O runtime de produção permitirá spawn de processo filho.
-
-## Future Extensions
-
-### Description
-Extensões futuras possíveis sem comprometer a simplicidade da V1.
-
-### Technical design
-- Novas linguagens Tree-sitter.
-- Resolução mais profunda de símbolos/imports/calls.
-- Adapter MCP nativo.
-- API HTTP/SSE opcional.
-- Benchmark suite por linguagem e tamanho de repositório.
-
-### Data structures
-- `ExtensionCandidate { name, impact, complexity }`
-
-### Algorithms
-- Priorizar extensões que não quebrem o protocolo JSONL existente.
-
-### Open questions
-- Nenhuma no momento.
-
-### Assumptions
-- Evoluções futuras devem preservar backward compatibility do protocolo sempre que possível.
-
-## Annex A — Example SQL schema for caller (suggested)
-
--- files
-CREATE TABLE files (
-  id TEXT PRIMARY KEY,
-  path TEXT NOT NULL,
-  hash TEXT,
-  size BIGINT,
-  language TEXT,
-  indexed_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- symbols
-CREATE TABLE symbols (
-  id TEXT PRIMARY KEY,
-  file_id TEXT REFERENCES files(id),
-  kind TEXT,
-  name TEXT,
-  qualified_name TEXT,
-  start_line INT,
-  end_line INT,
-  signature TEXT,
-  visibility TEXT,
-  parent_symbol_id TEXT
-);
-
--- import edges
-CREATE TABLE import_edges (
-  id TEXT PRIMARY KEY,
-  file_id TEXT REFERENCES files(id),
-  to_module TEXT,
-  imported_symbol TEXT,
-  alias TEXT,
-  import_kind TEXT,
-  start_line INT
-);
-
--- call edges
-CREATE TABLE call_edges (
-  id TEXT PRIMARY KEY,
-  caller_symbol_id TEXT,
-  callee_symbol_id TEXT,
-  callee_name TEXT,
-  call_kind TEXT,
-  call_line INT,
-  resolved BOOLEAN DEFAULT false
-);
-
--- chunks
-CREATE TABLE chunks (
-  id TEXT PRIMARY KEY,
-  file_id TEXT REFERENCES files(id),
-  symbol_id TEXT,
-  chunk_kind TEXT,
-  start_line INT,
-  end_line INT,
-  chunk_md5 TEXT,
-  size INT,
-  text TEXT
-);
-
--- embeddings (example for caller storage)
-CREATE TABLE embeddings (
-  id TEXT PRIMARY KEY,
-  chunk_id TEXT REFERENCES chunks(id),
-  provider TEXT,
-  model TEXT,
-  vector_ref TEXT,
-  created_at TIMESTAMP WITH TIME ZONE DEFAULT now()
-);
-
--- Indexes (examples)
-CREATE INDEX idx_files_path ON files(path);
-CREATE INDEX idx_symbols_file ON symbols(file_id);
-CREATE INDEX idx_chunks_md5 ON chunks(chunk_md5);
-
-## Annex B — Language support matrix (V1)
-
-The matrix below describes V1 support per language for Symbols, Imports and Calls extraction. "Partial" means structural extraction is supported but full resolution is not guaranteed in all cases.
-
-| Language | Symbols (examples) | Imports | Calls |
-|---|---:|:---:|:---:|
-| Rust | mod, struct, enum, trait, fn, impl, const | Named, use (relative) — partial resolution | Direct calls, method calls, dynamic dispatch marked `dynamic` |
-| Go | package, struct, interface, func, method, const, var | import paths, named imports — partial resolution | Direct calls, method calls, interface calls marked `dynamic` when unresolved |
-| Python | module, class, def, async def, assignment (top-level) | import, from ... import, wildcard — aliases may be unresolved | Direct calls, attribute calls; dynamic imports/calls marked `dynamic` |
-
+- Add an integration smoke test (CI) that creates a temporary git repo, commits files, modifies them, and executes the binary with `incremental_index` payload to validate the end-to-end behavior. This will be implemented as the next task.

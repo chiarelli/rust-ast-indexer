@@ -25,9 +25,11 @@ Descrição: construir esqueleto do binário, garantir protocolo JSONL estável,
       - atividade: docs(protocol): add protocol examples in doc/protocol.md
     - task: infra/git
       - atividade: feat(git): add shell-git diff helper (use_git mode)
+      - atividade: feat(git): integrate infra::git with CLI incremental_index and IndexOptions explicit_files (completed)
+      - atividade: test(git): add unit tests for git helper and integration smoke for incremental_index (completed)
     - task: tests/ci
-      - atividade: chore(ci): add GitHub Actions skeleton (fmt/clippy/test)
-      - atividade: test(smoke): add smoke test for list_languages + index_path
+      - atividade: chore(ci): add GitHub Actions skeleton (fmt/clippy/test) (completed)
+      - atividade: test(smoke): add smoke test for list_languages + index_path (completed)
 
 Cada atividade corresponde a um commit com o título no formato: type(scope): short description
 Exemplo: `feat(walker): implement walkdir file discovery`.
@@ -37,8 +39,10 @@ Cada task DEVE incluir testes de unidade cobrindo cenários 'happy' e 'unhappy' 
 
 Critérios de aceitação por atividade:
 - Todos os testes unitários passam localmente (`cargo test`).
-- Cobertura de unidade para o módulo alvo é >= 90% (meta; documentar exceções). 
+- `cargo clippy` deve passar sem warnings (usar `-D warnings` na CI).
+- Cobertura de unidade para o módulo alvo é >= 90% (meta; documentar exceções).
 - Commit está nomeado no formato `type(scope): short description`.
+- Ao commitar: usar explicitamente `git add <file>` (não `git add .`).
 - Testes de integração/smoke para a task rodando via binário devem existir quando aplicável.
 - Documentação mínima (README ou comentário no módulo) explicando a função e como testar.
 
