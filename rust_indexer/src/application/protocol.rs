@@ -37,6 +37,13 @@ pub enum ChunkKind {
     Contextual,
 }
 
+impl Default for ChunkKind {
+    fn default() -> Self {
+        ChunkKind::Contextual
+    }
+}
+
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChunkEventPayload {
     pub chunk_id: String,
@@ -56,20 +63,24 @@ pub struct ChunkEventPayload {
 impl From<crate::domain::types::Chunk> for ChunkEventPayload {
     fn from(c: crate::domain::types::Chunk) -> Self {
         // map chunk_kind string to enum, default to Contextual if unknown
-        let kind = c.chunk_kind.and_then(|s| match s.as_str() {
-            "FullFile" => Some(ChunkKind::FullFile),
-            "Symbol" => Some(ChunkKind::Symbol),
-            "Contextual" => Some(ChunkKind::Contextual),
-            other => {
-                // try case-insensitive match
-                match other.to_lowercase().as_str() {
-                    "fullfile" => Some(ChunkKind::FullFile),
-                    "symbol" => Some(ChunkKind::Symbol),
-                    "contextual" => Some(ChunkKind::Contextual),
-                    _ => None,
+        let kind = c
+            .chunk_kind
+            .as_ref()
+            .and_then(|s| match s.as_str() {
+                "FullFile" => Some(ChunkKind::FullFile),
+                "Symbol" => Some(ChunkKind::Symbol),
+                "Contextual" => Some(ChunkKind::Contextual),
+                other => {
+                    // try case-insensitive match
+                    match other.to_lowercase().as_str() {
+                        "fullfile" => Some(ChunkKind::FullFile),
+                        "symbol" => Some(ChunkKind::Symbol),
+                        "contextual" => Some(ChunkKind::Contextual),
+                        _ => None,
+                    }
                 }
-            }
-        }).unwrap_or(ChunkKind::Contextual);
+            })
+            .unwrap_or(ChunkKind::Contextual);
 
         ChunkEventPayload {
             chunk_id: c.id,
