@@ -58,8 +58,33 @@ fn handle_command(cmd: Command) {
         }
         "index_path" => {
             let job_id = cmd.job_id.clone().unwrap_or_else(|| "job-unknown".to_string());
-            let payload = cmd.payload.unwrap_or_default();
-            let path = payload.get("path").and_then(|v| v.as_str()).unwrap_or(".").to_string();
+            // validate payload exists and contains a path string
+            let payload = match cmd.payload {
+                Some(p) => p,
+                None => {
+                    let ev = Event {
+                        protocol_version: "1.0.0".into(),
+                        r#type: "event".into(),
+                        event: "error".into(),
+                        job_id: cmd.job_id.clone(),
+                        payload: Some(json!({"code":"INVALID_PAYLOAD","message":"missing payload for index_path","recoverable":false})),
+                    };
+                    jsonl::write_event(&ev);
+                    return;
+                }
+            };
+            let path = payload.get("path").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if path.is_empty() {
+                let ev = Event {
+                    protocol_version: "1.0.0".into(),
+                    r#type: "event".into(),
+                    event: "error".into(),
+                    job_id: cmd.job_id.clone(),
+                    payload: Some(json!({"code":"INVALID_PAYLOAD","message":"missing path in payload","recoverable":false})),
+                };
+                jsonl::write_event(&ev);
+                return;
+            }
             let opts = IndexOptions { max_concurrency: payload.get("options").and_then(|o| o.get("max_concurrency")).and_then(|v| v.as_u64()).map(|v| v as usize).unwrap_or_else(num_cpus::get) };
 
             // spawn job thread
