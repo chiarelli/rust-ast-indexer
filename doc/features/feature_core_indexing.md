@@ -37,8 +37,10 @@ Cada task DEVE incluir testes de unidade cobrindo cenários 'happy' e 'unhappy' 
 
 Critérios de aceitação por atividade:
 - Todos os testes unitários passam localmente (`cargo test`).
-- Cobertura de unidade para o módulo alvo é >= 90% (meta; documentar exceções). 
+- `cargo clippy` deve passar sem warnings (usar `-D warnings` na CI).
+- Cobertura de unidade para o módulo alvo é >= 90% (meta; documentar exceções).
 - Commit está nomeado no formato `type(scope): short description`.
+- Ao commitar: usar explicitamente `git add <file>` (não `git add .`).
 - Testes de integração/smoke para a task rodando via binário devem existir quando aplicável.
 - Documentação mínima (README ou comentário no módulo) explicando a função e como testar.
 
