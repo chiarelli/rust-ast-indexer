@@ -1,0 +1,267 @@
+{
+  "global_completion": 0.9,
+  "global_threshold": 0.92,
+  "sections": {
+    "project_overview": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Engine será implementado em Rust usando Rayon e Tree-sitter",
+        "Suporte inicial para 5 linguagens (Rust, Go, Python, TypeScript, Java)",
+        "Operará como binário executável, exposto via stdio para Node.js",
+        "Embeddings serão gerados pelo chamador; engine é stateless"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Usar Tree-sitter para parsing AST",
+        "Usar Walkdir para varredura de arquivos",
+        "Expor interface via stdio (protocolo JSONL - newline-delimited JSON)",
+        "Engine será stateless e emitirá chunk_md5/md5 e tamanho para cada chunk"
+      ]
+    },
+    "goals_and_non_goals": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Não incluir backend de armazenamento"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Focar em extração e chunking; não armazenar resultados",
+        "Aplicar Design-Driven Development (DDD-lite) e princípios SOLID em todo o código"
+      ]
+    },
+    "system_architecture": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Node.js será chamador via child_process stdio"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Entregar o indexador principalmente como binário executável",
+        "Endpoint de capabilities via stdio: list_languages, index_path, stop, status; protocolo: JSONL",
+        "Fornecer separação em camadas: domain, application, infra, cli",
+        "Suportar compatibilidade MCP via stdio como objetivo de integração futura",
+        "Suportar modo opcional de integração com Git para listar diffs e arquivos modificados quando solicitado (use_git:true) — implementar via shell git"
+      ]
+    },
+    "repository_scanning": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Chamador fornece path e ignore patterns"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Respeitar .gitignore/.crushignore se chamador permitir",
+        "Suportar modo git: listar arquivos modificados entre commits ou HEAD (quando solicitado pelo chamador) — usar shell git (invocar git) para determinar diffs"
+      ]
+    },
+    "parallel_processing": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Usar Rayon para paralelismo de CPU durante parsing e chunking"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Paralelizar parsing/chunking via Rayon par_iter; permitir max_concurrency configurável via options ou RAYON_NUM_THREADS env var",
+        "Implementar concurrency hardening: pool de parsers por thread, testes de race, e isolamento de estado do Tree-sitter",
+        "Usar semáforo interno para evitar oversubscription quando max_concurrency > available cores"
+      ]
+    },
+    "ast_extraction": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Cada linguagem terá um adapter próprio de parsing e extração"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Isolar lógica de parsing em services no domínio para facilitar testes e substituição de Tree-sitter",
+        "Normalizar ranges em start_line/start_col/end_line/end_col",
+        "Encapsular diferenças por linguagem em adaptadores"
+      ]
+    },
+    "symbol_extraction": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "V1 focará em símbolos de alto valor"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Modelos de domínio para Symbol e Chunk; operações puro-funcionais quando possível",
+        "Extrair module, class, struct, interface, enum, function, method, trait, type_alias e const",
+        "Padronizar Symbol com id, kind, name, qualified_name, file_path, range, signature, visibility e parent_symbol_id"
+      ]
+    },
+    "import_graph": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Resolução total de dependências externas não é obrigatória na V1"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Escopo: registrar arestas por arquivo → módulo importado, por símbolo/função (quando disponível)",
+        "Incluir import_kind, alias, imported_symbol e resolved",
+        "Modelar ImportEdge como { from_file, to_module, imported_symbol, alias, import_kind, location, resolved }"
+      ]
+    },
+    "call_graph": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Dispatch dinâmico e reflexão não serão totalmente resolvidos na V1"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Escopo: registrar chamadas diretas entre caller e callee quando detectáveis estaticamente",
+        "Marcar chamadas dinâmicas/indiretas com resolved=false ou call_kind=dynamic",
+        "Modelar CallEdge como { caller_symbol_id, callee_name, callee_symbol_id, call_kind, location, resolved }"
+      ]
+    },
+    "chunk_generation": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Chunk regras baseadas em linhas e símbolos"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Se file_lines < 200 -> full file chunk + symbol chunks; else symbol chunks",
+        "Emitir chunks como eventos JSONL incrementalmente",
+        "Implementar backpressure/streaming: se fila cheia -> PAUSE (não enviar mais eventos) até receber resume; defaults: max_queue_size=500, ack_required=false",
+        "Incluir md5 (chunk_md5), size, language, chunk_kind e symbol_id opcional em metadados de chunk",
+        "Tratamento de arquivos não-UTF8/binários: emitir evento file_invalid e continuar com próximo arquivo"
+      ]
+    },
+    "embedding_preparation": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Geração de embeddings será responsabilidade do chamador"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Não gerar embeddings por padrão; engine fornece metadados necessários (chunk_md5, size, file path, language, symbol_id, chunk_kind)"
+      ]
+    },
+    "incremental_indexing": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "O caller controla quando reindexar"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Incremental/reindex é responsabilidade do chamador",
+        "A engine oferece list_files, dry_run e incremental_index para facilitar o caller",
+        "incremental_index aceita lista explícita de arquivos e modo opcional use_git:true com git_range"
+      ]
+    },
+    "database_schema": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Não existe banco interno no engine"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Não aplicável internamente (engine stateless)",
+        "Sugerir um schema SQL de exemplo para o chamador com tabelas files, symbols, import_edges, call_edges, chunks e embeddings"
+      ]
+    },
+    "mcp_tooling": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Compatibilidade MCP é desejável, mas não obrigatória como protocolo nativo na V1"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Compatibilidade com MCP stdio opcional — implementar JSONL stdio compatível com futura adaptação",
+        "Preservar envelopes e capabilities que facilitem um adapter MCP depois",
+        "Possíveis extensões para HTTP/SSE MCP no futuro"
+      ]
+    },
+    "performance_strategy": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "O caller consumirá stdout em streaming"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Default max_concurrency = num_cpus::get()",
+        "Semáforo para controlar oversubscription",
+        "max_queue_size default 500",
+        "line JSON max 1MB",
+        "Pausar emissão quando fila encher e retomar somente com resume"
+      ]
+    },
+    "error_handling": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "Erros recoverable devem ser isolados por arquivo quando possível"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Usar códigos de erro padronizados no protocolo stdio",
+        "Erros documentados com códigos e mensagens; emitir evento error JSONL",
+        "Invalid binary files -> event file_invalid and continue",
+        "ProtocolError inclui code, message, recoverable, file_path opcional e detail opcional"
+      ]
+    },
+    "testing_strategy": {
+      "completion": 1.0,
+      "threshold": 0.9,
+      "assumptions": [
+        "Todos os módulos devem ter testes unitários e integração"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Adotar duas pastas de testes: __testes__ para testes unitários (por módulo) e __tests-it para testes de integração/smoke",
+        "Cobrir caminhos felizes e tristes; incluir smoke tests que executam binário via child_process; testar funções privadas colocando testes no mesmo módulo (#[cfg(test)])",
+        "CI pipeline: cargo fmt, clippy, cargo test, coverage and benchmarks"
+      ]
+    },
+    "deployment_model": {
+      "completion": 0.95,
+      "threshold": 0.9,
+      "assumptions": [
+        "O artefato principal é um binário executável"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Fornecer binário executável por plataforma alvo",
+        "Integração principal via child_process.spawn no Node.js",
+        "Estrutura interna modular pode permanecer para testabilidade, mas não é o contrato principal"
+      ]
+    },
+    "future_extensions": {
+      "completion": 0.9,
+      "threshold": 0.9,
+      "assumptions": [
+        "Backward compatibility do protocolo é desejável"
+      ],
+      "open_questions": [],
+      "decisions": [
+        "Adicionar novas linguagens Tree-sitter",
+        "Aprofundar resolução de imports e calls",
+        "Criar adapter MCP nativo",
+        "Adicionar API HTTP/SSE opcional"
+      ]
+    }
+  },
+  "open_questions_global": [],
+  "assumptions_global": [
+    "Chamador (Node.js) gerenciará armazenamento e embeddings",
+    "Engine exporá capacidades via stdio"
+  ],
+  "last_iteration_notes": "Décima iteração: consolidei a especificação como binário stateless com JSONL, MCP-compatível, schema SQL apenas como exemplo para o caller, além de AST/symbol/import/call/protocol já definidos.",
+  "planning_completed": false
+}
