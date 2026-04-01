@@ -35,6 +35,10 @@ jobs:
 
       - name: Run tests
         run: cargo test --workspace --all-features --no-fail-fast
+      - name: Run smoke streaming tests
+        run: |
+          cd rust_indexer
+          cargo test --test smoke_streaming -- --nocapture
 
       - name: Verify commit messages
         run: |
