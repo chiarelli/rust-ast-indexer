@@ -1,4 +1,5 @@
-use crate::domain::types::{ParsedFile, Symbol};
+use crate::domain::parser::ParsedFile;
+use crate::domain::types::Symbol;
 pub mod rust;
 use anyhow::Result;
 
