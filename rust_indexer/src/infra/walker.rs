@@ -334,4 +334,59 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].path, "visible.txt");
     }
+
+    #[cfg(unix)]
+    #[test]
+    fn follow_links_respects_option() {
+        use std::os::unix::fs::symlink;
+
+        let dir = tempdir().unwrap();
+        let external = tempdir().unwrap();
+        let ext_sub = external.path().join("extdir");
+        std::fs::create_dir_all(&ext_sub).unwrap();
+        std::fs::write(ext_sub.join("outside.rs"), b"fn outside() {}\n").unwrap();
+
+        // create a symlink inside repo pointing to external directory
+        symlink(&ext_sub, dir.path().join("link")).unwrap();
+
+        // without following links, file under link should not be discovered
+        let opts = ScanOptions::new(dir.path()).follow_links(false);
+        let records = walk_path(&opts).unwrap();
+        assert!(!records.iter().any(|r| r.path == "link/outside.rs"));
+
+        // with following links, file should be discovered
+        let opts2 = ScanOptions::new(dir.path()).follow_links(true);
+        let records2 = walk_path(&opts2).unwrap();
+        assert!(records2.iter().any(|r| r.path == "link/outside.rs"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn follow_links_respects_option_windows() {
+        use std::os::windows::fs::symlink_dir;
+
+        let dir = tempdir().unwrap();
+        let external = tempdir().unwrap();
+        let ext_sub = external.path().join("extdir");
+        std::fs::create_dir_all(&ext_sub).unwrap();
+        std::fs::write(ext_sub.join("outside.rs"), b"fn outside() {}\n").unwrap();
+
+        // create a symlink inside repo pointing to external directory
+        // Note: symlink_dir on Windows may require elevated privileges in some CI environments.
+        let link_path = dir.path().join("link");
+        let _ = symlink_dir(&ext_sub, &link_path);
+
+        // without following links, file under link should not be discovered
+        let opts = ScanOptions::new(dir.path()).follow_links(false);
+        let records = walk_path(&opts).unwrap();
+        assert!(!records.iter().any(|r| r.path == "link/outside.rs"));
+
+        // with following links, file should be discovered if symlink creation succeeded
+        let opts2 = ScanOptions::new(dir.path()).follow_links(true);
+        let records2 = walk_path(&opts2).unwrap();
+        // only assert presence if symlink exists
+        if link_path.exists() {
+            assert!(records2.iter().any(|r| r.path == "link/outside.rs"));
+        }
+    }
 }
