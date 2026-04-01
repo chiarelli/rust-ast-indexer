@@ -1,6 +1,6 @@
+use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
-use serde_json::{Value, json};
 
 fn spawn_indexer() -> Child {
     // Try to locate built binary via CARGO_BIN_EXE; if not set (running via `cargo test`),
@@ -13,7 +13,10 @@ fn spawn_indexer() -> Child {
             .expect("failed to spawn indexer")
     } else {
         let possible = std::path::PathBuf::from(std::env::current_dir().unwrap())
-            .join("rust_indexer").join("target").join("debug").join("rust_indexer");
+            .join("rust_indexer")
+            .join("target")
+            .join("debug")
+            .join("rust_indexer");
         Command::new(possible)
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
@@ -100,7 +103,10 @@ fn smoke_unknown_command_emits_error() {
     // read next event which should be an error
     let ev = read_next_event(&mut reader);
     assert_eq!(ev["event"], "error");
-    assert!(ev["payload"]["message"].as_str().unwrap_or("").contains("unknown command"));
+    assert!(ev["payload"]["message"]
+        .as_str()
+        .unwrap_or("")
+        .contains("unknown command"));
 
     let _ = child.kill();
     let _ = child.wait();

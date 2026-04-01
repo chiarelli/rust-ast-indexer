@@ -13,7 +13,9 @@ pub fn dispatch_line(line: &str) -> bool {
             r#type: "event".into(),
             event: "error".into(),
             job_id: None,
-            payload: Some(json!({"code":"INVALID_COMMAND","message":"failed to parse command","recoverable":false})),
+            payload: Some(
+                json!({"code":"INVALID_COMMAND","message":"failed to parse command","recoverable":false}),
+            ),
         };
         jsonl::write_event(&ev);
         true
@@ -30,7 +32,9 @@ pub fn dispatch_cmd(cmd: &Command) -> bool {
                 r#type: "event".into(),
                 event: "capabilities".into(),
                 job_id: None,
-                payload: Some(json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]})),
+                payload: Some(
+                    json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
+                ),
             };
             jsonl::write_event(&ev);
             true
