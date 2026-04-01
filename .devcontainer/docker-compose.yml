@@ -1,0 +1,37 @@
+services:
+  dev:
+    image: vsc-crush:1.0
+    container_name: crush-dev
+    volumes:
+      - ..:/workspace
+    command: sleep infinity
+
+  qdrant:
+    image: docker.io/qdrant/qdrant:latest
+    container_name: qdrant-mcp
+    # ports:
+    #   - "6333:6333"
+    #   - "6334:6334"
+    volumes:
+      - qdrant_data:/qdrant/storage:Z
+    environment:
+      QDRANT__SERVICE__GRPC_PORT: "6334"
+    restart: unless-stopped
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "wget",
+          "--no-verbose",
+          "--tries=1",
+          "--spider",
+          "http://localhost:6333/readyz",
+        ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+volumes:
+  qdrant_data:
+    driver: local

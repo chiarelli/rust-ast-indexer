@@ -1,0 +1,7 @@
+AGENTS.md
+# Local configs
+.crush.json
+# Node modules
+node_modules/
+# Rust target
+rust_indexer/target/

@@ -1,0 +1,32 @@
+{
+  "name": "Programando com CRUSH",
+  "initializeCommand": "./.devcontainer/image-build.sh",
+  "dockerComposeFile": "./docker-compose.yml",
+  "workspaceFolder": "/workspace",
+  "service": "dev",
+  "containerEnv": {
+    "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [],
+      "unwantedRecommendations": [
+        "1YiB.rust-bundle",
+        "GitHub.copilot-chat",
+        "serayuzgur.crates"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "rust-analyzer.checkOnSave.command": "clippy",
+        "rust-analyzer.cargo.allFeatures": true
+      }
+    }
+  },
+  "mounts": [
+    "source=${localWorkspaceFolder},target=/workspace,type=bind",
+    "source=${env:HOME}/.gitconfig,target=/home/vscode/.gitconfig,type=bind",
+    "source=${env:HOME}/.ssh,target=/home/vscode/.ssh,type=bind"
+  ],
+  // "postCreateCommand": "rustc --version && cargo --version",
+  "remoteUser": "vscode"
+}
