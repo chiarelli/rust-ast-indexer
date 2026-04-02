@@ -6,12 +6,14 @@
   "service": "dev",
   "containerEnv": {
     "OPENAI_API_KEY": "${localEnv:OPENAI_API_KEY}",
-    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}"
+    "GEMINI_API_KEY": "${localEnv:GEMINI_API_KEY}",
+    "OPENROUTER_API_KEY": "${localEnv:OPENROUTER_API_KEY}"
   },
   "customizations": {
     "vscode": {
       "extensions": [
         "dustypomerleau.rust-syntax",
+        "rust-lang.rust-analyzer",
         "mhutchie.git-graph",
         "MS-CEINTL.vscode-language-pack-pt-BR",
         "natqe.reload",

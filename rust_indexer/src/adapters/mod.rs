@@ -1,6 +1,14 @@
 use crate::domain::parser::ParsedFile;
 use crate::domain::types::Symbol;
 pub mod rust;
+pub mod typescript;
+pub mod java;
+#[cfg(all(test, feature = "parsing"))]
+mod rust_tests;
+#[cfg(all(test, feature = "parsing"))]
+mod typescript_tests;
+#[cfg(all(test, feature = "parsing"))]
+mod java_tests;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {

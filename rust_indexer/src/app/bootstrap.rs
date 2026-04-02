@@ -7,14 +7,16 @@ use dashmap::DashMap;
 #[derive(Debug)]
 pub enum ConfigError {
     Io(std::io::Error),
-    Parse(serde_json::Error),
+    MissingField(&'static str),
+    InvalidValue(&'static str, String),
 }
 
 impl std::fmt::Display for ConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             ConfigError::Io(e) => write!(f, "failed to read config file: {}", e),
-            ConfigError::Parse(e) => write!(f, "failed to parse config: {}", e),
+            ConfigError::MissingField(name) => write!(f, "missing required config field: {}", name),
+            ConfigError::InvalidValue(name, val) => write!(f, "invalid value for '{}': {}", name, val),
         }
     }
 }
@@ -24,12 +26,6 @@ impl std::error::Error for ConfigError {}
 impl From<std::io::Error> for ConfigError {
     fn from(e: std::io::Error) -> Self {
         ConfigError::Io(e)
-    }
-}
-
-impl From<serde_json::Error> for ConfigError {
-    fn from(e: serde_json::Error) -> Self {
-        ConfigError::Parse(e)
     }
 }
 
@@ -47,7 +43,20 @@ impl Config {
     #[cfg(feature = "parsing")]
     pub fn from_file(path: &str) -> Result<Self, ConfigError> {
         let content = std::fs::read_to_string(path)?;
-        Ok(serde_json::from_str(&content)?)
+        let value: serde_json::Value = serde_json::from_str(&content)
+            .map_err(|e| ConfigError::InvalidValue("JSON", e.to_string()))?;
+
+        let max_concurrency = value.get("max_concurrency")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .ok_or(ConfigError::MissingField("max_concurrency"))?;
+
+        let max_queue_size = value.get("max_queue_size")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .ok_or(ConfigError::MissingField("max_queue_size"))?;
+
+        Ok(Self { max_concurrency, max_queue_size })
     }
 
     /// Loads config by checking environment variables first, then falling back to defaults.
@@ -126,16 +135,26 @@ pub struct ApplicationContext {
 
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     let registry = Arc::new(Registry::new());
-    let parser_pool = Arc::new(ParserPool::new(config.max_concurrency));
+    let pool = Arc::new(ParserPool::new());
 
-    // register built-in adapters into the registry
+    // register built-in adapters
     #[cfg(feature = "parsing")]
     {
-        // rust adapter registers itself into the provided registry
         crate::adapters::rust::register_to(&registry);
+        crate::adapters::typescript::register_to(&registry);
+        crate::adapters::java::register_to(&registry);
     }
 
-    Arc::new(ApplicationContext { registry, parser_pool, config, metrics: None, logger: None })
+    // register same adapters into the pool for per-language parsing
+    #[cfg(feature = "parsing")]
+    {
+        pool.register("rust", Arc::new(crate::adapters::rust::RustAdapter::new()));
+        pool.register("typescript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
+        pool.register("javascript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
+        pool.register("java", Arc::new(crate::adapters::java::JavaAdapter::new()));
+    }
+
+    Arc::new(ApplicationContext { registry, parser_pool: pool, config, metrics: None, logger: None })
 }
 
 #[cfg(test)]
@@ -177,6 +196,29 @@ mod tests {
         std::env::remove_var("MAX_QUEUE_SIZE");
     }
 
+    #[cfg(feature = "parsing")]
+    #[test]
+    fn config_from_file_parses_json() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("test_config.json");
+        std::fs::write(&file, r#"{"max_concurrency":4,"max_queue_size":50}"#).expect("write temp");
+        let cfg = Config::from_file(file.to_str().unwrap()).expect("should parse");
+        assert_eq!(cfg.max_concurrency, 4);
+        assert_eq!(cfg.max_queue_size, 50);
+        let _ = std::fs::remove_file(&file);
+    }
+
+    #[cfg(feature = "parsing")]
+    #[test]
+    fn config_from_file_missing_field_errors() {
+        let dir = std::env::temp_dir();
+        let file = dir.join("test_config_bad.json");
+        std::fs::write(&file, r#"{"max_concurrency":4}"#).expect("write temp");
+        let result = Config::from_file(file.to_str().unwrap());
+        assert!(result.is_err());
+        let _ = std::fs::remove_file(&file);
+    }
+
     #[test]
     fn register_and_list_languages() {
         use crate::adapters::LanguageAdapter;
@@ -186,7 +228,7 @@ mod tests {
         struct StubAdapter;
         impl LanguageAdapter for StubAdapter {
             fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
-                Ok(ParsedFile { language: "stub".to_string(), source_len: 0 })
+                Ok(ParsedFile { language: "stub".to_string(), source_len: 0, source: String::new() })
             }
             fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<crate::domain::types::Symbol>> {
                 Ok(vec![])
