@@ -140,8 +140,8 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     // register built-in adapters into the registry
     #[cfg(feature = "parsing")]
     {
-        // rust adapter registers itself into the provided registry
         crate::adapters::rust::register_to(&registry);
+        crate::adapters::typescript::register_to(&registry);
     }
 
     Arc::new(ApplicationContext { registry, parser_pool, config, metrics: None, logger: None })

@@ -11,7 +11,7 @@ mod tests {
 
     impl LanguageAdapter for DummyAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
-            Ok(ParsedFile { language: "dummy".to_string(), source_len: source.len() })
+            Ok(ParsedFile { language: "dummy".to_string(), source_len: source.len(), source: source.to_string() })
         }
         fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<Symbol>> {
             Ok(vec![Symbol { id: "s1".to_string(), name: "foo".to_string(), kind: "function".to_string(), scope: None, file_path: "a.rs".to_string(), start_line: 1, end_line: 3, signature: None }])

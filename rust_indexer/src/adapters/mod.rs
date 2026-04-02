@@ -1,6 +1,9 @@
 use crate::domain::parser::ParsedFile;
 use crate::domain::types::Symbol;
 pub mod rust;
+pub mod typescript;
+#[cfg(all(test, feature = "parsing"))]
+mod rust_tests;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {

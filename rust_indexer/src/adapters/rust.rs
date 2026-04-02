@@ -76,18 +76,19 @@ mod rust_adapter {
                         end_line,
                         signature,
                     });
+                }
 
-                    let child_scope = name.as_str();
-                    if cursor.goto_first_child() {
-                        Self::walk_tree(
-                            cursor,
-                            source,
-                            file_path,
-                            Some(child_scope),
-                            symbols,
-                        );
-                        cursor.goto_parent();
-                    }
+                let has_children = node.child_count() > 0;
+                let should_descend = has_children;
+                if should_descend && cursor.goto_first_child() {
+                    Self::walk_tree(
+                        cursor,
+                        source,
+                        file_path,
+                        scope,
+                        symbols,
+                    );
+                    cursor.goto_parent();
                 }
 
                 if !cursor.goto_next_sibling() {
