@@ -7,7 +7,6 @@ use tree_sitter::Parser;
 #[cfg(feature = "parsing")] use tree_sitter_rust::language as tree_sitter_rust_language;
 
 pub struct ParserPool {
-    // pool of parsers protected by a mutex for simple reuse
     parsers: Vec<Arc<Mutex<Parser>>>,
 }
 
@@ -16,7 +15,6 @@ impl ParserPool {
         let mut parsers = Vec::with_capacity(size);
         for _ in 0..size {
             let mut parser = Parser::new();
-            // when parsing feature enabled, set the language; otherwise leave parser unconfigured
             #[cfg(feature = "parsing")] {
                 use tree_sitter::Language as TS_Language;
                 extern "C" { fn tree_sitter_rust() -> TS_Language; }

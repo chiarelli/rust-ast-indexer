@@ -1,6 +1,6 @@
 #[cfg(feature = "parsing")]
 mod rust_adapter {
-    use super::LanguageAdapter;
+    use crate::adapters::LanguageAdapter;
     use crate::domain::parser::ParsedFile;
     use crate::domain::types::Symbol;
     use anyhow::Result;
@@ -17,7 +17,7 @@ mod rust_adapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
             let mut parser = Parser::new();
             unsafe { parser.set_language(tree_sitter_rust()).unwrap(); }
-            let tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
+            let _tree = parser.parse(source, None).ok_or_else(|| anyhow::anyhow!("parse failed"))?;
             Ok(ParsedFile { language: "rust".to_string(), source_len: source.len() })
         }
         fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<Symbol>> {
@@ -28,8 +28,8 @@ mod rust_adapter {
     }
 
     // register at init when feature enabled
-    pub fn register() {
-        crate::adapters::register_adapter("rust", Box::new(RustAdapter::new()));
+    pub fn register_to(registry: &crate::app::bootstrap::Registry) {
+        crate::register_language_adapter!(registry, "rust", RustAdapter::new());
     }
 }
 
