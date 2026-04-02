@@ -135,9 +135,9 @@ pub struct ApplicationContext {
 
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     let registry = Arc::new(Registry::new());
-    let parser_pool = Arc::new(ParserPool::new(config.max_concurrency));
+    let pool = Arc::new(ParserPool::new());
 
-    // register built-in adapters into the registry
+    // register built-in adapters
     #[cfg(feature = "parsing")]
     {
         crate::adapters::rust::register_to(&registry);
@@ -145,7 +145,16 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
         crate::adapters::java::register_to(&registry);
     }
 
-    Arc::new(ApplicationContext { registry, parser_pool, config, metrics: None, logger: None })
+    // register same adapters into the pool for per-language parsing
+    #[cfg(feature = "parsing")]
+    {
+        pool.register("rust", Arc::new(crate::adapters::rust::RustAdapter::new()));
+        pool.register("typescript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
+        pool.register("javascript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
+        pool.register("java", Arc::new(crate::adapters::java::JavaAdapter::new()));
+    }
+
+    Arc::new(ApplicationContext { registry, parser_pool: pool, config, metrics: None, logger: None })
 }
 
 #[cfg(test)]

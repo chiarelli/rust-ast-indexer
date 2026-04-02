@@ -3,10 +3,27 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
+use crate::adapters::LanguageAdapter;
 use crate::app::bootstrap::ApplicationContext;
 use crate::domain::types::{Chunk, FileRecord};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
+
+/// Detect language from file extension
+fn detect_language(path: &str) -> Option<String> {
+    let ext = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str());
+
+    match ext {
+        Some("rs") => Some("rust".to_string()),
+        Some("ts") | Some("tsx") => Some("typescript".to_string()),
+        Some("js") | Some("jsx") => Some("javascript".to_string()),
+        Some("java") => Some("java".to_string()),
+        Some(_) => None,
+        None => None,
+    }
+}
 
 pub struct IndexOptions {
     pub max_concurrency: usize,
@@ -101,7 +118,7 @@ impl Indexer {
         let pool = if let Some(ctx) = &self.ctx {
             ctx.parser_pool.clone()
         } else {
-            Arc::new(ParserPool::new(opts.max_concurrency))
+            Arc::new(ParserPool::new())
         };
 
         let (tx, rx) = mpsc::channel();
@@ -114,19 +131,30 @@ impl Indexer {
             .enumerate()
             .with_max_len(1)
             .for_each_with(tx.clone(), |s, (idx, file)| {
-                // Each worker can acquire a parser from the pool. Use thread index to pick one.
-                let parser_arc = pool.get(idx);
-                let mut parser = parser_arc.lock().unwrap();
+                // Determine language for this file and get adapter from pool
+                let lang = detect_language(&file.path);
+                let adapter_opt = lang.as_ref().and_then(|l| pool.get(l));
 
                 // Build full path to file by joining base path and relative file path
                 let full_path = base_path.join(&file.path);
 
-                // Parse file content using tree-sitter (if available for language)
+                // Read and parse file content
                 let text = std::fs::read_to_string(&full_path).unwrap_or_default();
-                let tree = parser.parse(&text, None);
+                let (parsed_text, syms) = match &adapter_opt {
+                    Some(adapter) => {
+                        match adapter.parse_source(&text) {
+                            Ok(parsed) => {
+                                let syms = adapter.extract_symbols(&parsed).ok();
+                                (parsed.source.clone(), syms)
+                            }
+                            Err(_) => (text.clone(), None),
+                        }
+                    }
+                    None => (text.clone(), None),
+                };
 
                 // For now, generate a simple chunk using the file content's first line
-                let first_line = text.lines().next().unwrap_or("").to_string();
+                let first_line = parsed_text.lines().next().unwrap_or("").to_string();
 
                 let chunk = Chunk {
                     id: format!("chunk-{}", idx),
@@ -136,14 +164,14 @@ impl Indexer {
                     text: first_line,
                     md5: file.hash.clone(),
                     size: file.size as usize,
-                    language: file.language.clone(),
-                    symbol_id: None,
+                    language: file.language.clone().or(lang),
+                    symbol_id: syms.as_ref().and_then(|s| s.first().map(|s| s.id.clone())),
                     chunk_kind: Some("FullFile".into()),
                 };
 
-                // Optionally inspect tree to ensure parsing succeeded (not used yet)
-                if tree.is_none() {
-                    // parsing failed; still emit chunk with empty text
+                // If no adapter for this language, still emit chunk
+                if adapter_opt.is_none() && file.language.is_none() {
+                    // no adapter for this language
                 }
 
                 // Send chunk to collector

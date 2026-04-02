@@ -4,8 +4,11 @@ mod rust_adapter {
     use crate::domain::parser::ParsedFile;
     use crate::domain::types::Symbol;
     use anyhow::Result;
-    use tree_sitter::{Parser, Language, Tree};
-    extern "C" { fn tree_sitter_rust() -> Language; }
+    use tree_sitter::{Parser, Tree};
+
+    fn rust_language() -> tree_sitter::Language {
+        tree_sitter_rust::language()
+    }
 
     pub struct RustAdapter;
 
@@ -14,11 +17,9 @@ mod rust_adapter {
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
-            unsafe {
-                parser
-                    .set_language(tree_sitter_rust())
-                    .map_err(|e| anyhow::anyhow!("set_language failed: {:?}", e))?;
-            }
+            parser
+                .set_language(rust_language())
+                .map_err(|e| anyhow::anyhow!("set_language failed: {:?}", e))?;
             let tree = parser
                 .parse(source, None)
                 .ok_or_else(|| anyhow::anyhow!("parse failed"))?;
