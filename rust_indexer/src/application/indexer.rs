@@ -1,13 +1,11 @@
 use std::sync::mpsc::{self};
 use std::sync::Arc;
 
-use rayon::prelude::*;
-
-use crate::adapters::LanguageAdapter;
 use crate::app::bootstrap::ApplicationContext;
 use crate::domain::types::{Chunk, FileRecord};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
+use rayon::prelude::*;
 
 /// Detect language from file extension
 fn detect_language(path: &str) -> Option<String> {
@@ -57,13 +55,17 @@ impl Indexer {
     /// Simple serial index_path (keeps previous behavior)
     pub fn index_path(&self, path: &str, opts: IndexOptions) -> Result<IndexResult, WalkerError> {
         let files = if let Some(explicit) = &opts.explicit_files {
-            explicit.iter().cloned().map(|f_path| FileRecord {
-                path: f_path,
-                size: 0,
-                mtime: 0,
-                hash: "".to_string(),
-                language: None,
-            }).collect()
+            explicit
+                .iter()
+                .cloned()
+                .map(|f_path| FileRecord {
+                    path: f_path,
+                    size: 0,
+                    mtime: 0,
+                    hash: "".to_string(),
+                    language: None,
+                })
+                .collect()
         } else {
             let scan_opts = ScanOptions::new(path);
             walk_path(&scan_opts)?
@@ -103,13 +105,17 @@ impl Indexer {
         job_id: Option<String>,
     ) -> Result<IndexResult, WalkerError> {
         let files = if let Some(explicit) = &opts.explicit_files {
-            explicit.iter().cloned().map(|f_path| FileRecord {
-                path: f_path,
-                size: 0,
-                mtime: 0,
-                hash: "".to_string(),
-                language: None,
-            }).collect()
+            explicit
+                .iter()
+                .cloned()
+                .map(|f_path| FileRecord {
+                    path: f_path,
+                    size: 0,
+                    mtime: 0,
+                    hash: "".to_string(),
+                    language: None,
+                })
+                .collect()
         } else {
             let scan_opts = ScanOptions::new(path);
             walk_path(&scan_opts)?
@@ -141,15 +147,13 @@ impl Indexer {
                 // Read and parse file content
                 let text = std::fs::read_to_string(&full_path).unwrap_or_default();
                 let (parsed_text, syms) = match &adapter_opt {
-                    Some(adapter) => {
-                        match adapter.parse_source(&text) {
-                            Ok(parsed) => {
-                                let syms = adapter.extract_symbols(&parsed).ok();
-                                (parsed.source.clone(), syms)
-                            }
-                            Err(_) => (text.clone(), None),
+                    Some(adapter) => match adapter.parse_source(&text) {
+                        Ok(parsed) => {
+                            let syms = adapter.extract_symbols(&parsed).ok();
+                            (parsed.source.clone(), syms)
                         }
-                    }
+                        Err(_) => (text.clone(), None),
+                    },
                     None => (text.clone(), None),
                 };
 
@@ -214,7 +218,10 @@ mod tests {
         std::fs::write(&file_path, b"fn main() {}\n").unwrap();
 
         let indexer = Indexer::new();
-        let opts = IndexOptions { max_concurrency: 1, explicit_files: None };
+        let opts = IndexOptions {
+            max_concurrency: 1,
+            explicit_files: None,
+        };
         let result = indexer
             .index_path(dir.path().to_str().unwrap(), opts)
             .unwrap();
@@ -235,7 +242,10 @@ mod tests {
         std::fs::write(&file_path, b"fn main() {}\n").unwrap();
 
         let indexer = Indexer::new();
-        let opts = IndexOptions { max_concurrency: 2, explicit_files: None };
+        let opts = IndexOptions {
+            max_concurrency: 2,
+            explicit_files: None,
+        };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
             .unwrap();

@@ -12,6 +12,10 @@ mod rust_adapter {
 
     pub struct RustAdapter;
 
+    impl Default for RustAdapter {
+        fn default() -> Self { Self }
+    }
+
     impl RustAdapter {
         pub fn new() -> Self { RustAdapter }
 

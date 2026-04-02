@@ -35,6 +35,6 @@ pub fn get_adapter_compat(registry: &Registry, lang: &str) -> Option<Arc<dyn Lan
 #[macro_export]
 macro_rules! register_language_adapter {
     ($registry:expr, $lang:expr, $adapter:expr) => {
-        crate::adapters::register_adapter_compat($registry, $lang, std::sync::Arc::new($adapter));
+        $crate::adapters::register_adapter_compat($registry, $lang, std::sync::Arc::new($adapter));
     };
 }

@@ -9,6 +9,12 @@ pub struct ParserPool {
     adapters: DashMap<String, Arc<dyn LanguageAdapter>>,
 }
 
+impl Default for ParserPool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl ParserPool {
     pub fn new() -> Self {
         Self {
@@ -32,7 +38,7 @@ impl ParserPool {
     }
 }
 
-#[cfg(all(test))]
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::domain::parser::ParsedFile;

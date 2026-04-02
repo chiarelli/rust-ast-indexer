@@ -12,6 +12,10 @@ mod java_adapter {
 
     pub struct JavaAdapter;
 
+    impl Default for JavaAdapter {
+        fn default() -> Self { Self }
+    }
+
     impl JavaAdapter {
         pub fn new() -> Self { JavaAdapter }
 

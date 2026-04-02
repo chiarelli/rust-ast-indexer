@@ -29,18 +29,13 @@ pub struct Ack {
 }
 
 // Chunk event schema and variants
-#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq, Default)]
 #[serde(rename_all = "PascalCase")]
 pub enum ChunkKind {
     FullFile,
     Symbol,
+    #[default]
     Contextual,
-}
-
-impl Default for ChunkKind {
-    fn default() -> Self {
-        ChunkKind::Contextual
-    }
 }
 
 

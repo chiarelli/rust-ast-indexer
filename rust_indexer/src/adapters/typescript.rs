@@ -12,6 +12,10 @@ mod typescript_adapter {
 
     pub struct TypeScriptAdapter;
 
+    impl Default for TypeScriptAdapter {
+        fn default() -> Self { Self }
+    }
+
     impl TypeScriptAdapter {
         pub fn new() -> Self { TypeScriptAdapter }
 

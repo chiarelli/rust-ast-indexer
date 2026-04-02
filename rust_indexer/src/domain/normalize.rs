@@ -1,5 +1,6 @@
 pub use normalize::*;
 
+#[allow(clippy::module_inception)]
 mod normalize {
     use crate::domain::types::{NormalizedSymbol, Symbol};
     use std::collections::HashMap;

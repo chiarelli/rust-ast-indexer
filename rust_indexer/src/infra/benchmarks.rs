@@ -1,11 +1,10 @@
 use std::time::Instant;
-use rayon::prelude::*;
 
+use crate::adapters::LanguageAdapter;
 use crate::domain::parser::ParsedFile;
 use crate::domain::types::Symbol;
-use anyhow::Result;
-use crate::adapters::LanguageAdapter;
 use crate::infra::parser_pool::ParserPool;
+use anyhow::Result;
 
 pub struct BenchResult {
     pub elapsed_us: u128,
@@ -15,7 +14,10 @@ pub struct BenchResult {
     pub iterations: usize,
 }
 
-pub fn parse_once(adapter: &dyn LanguageAdapter, source: &str) -> Result<(ParsedFile, Vec<Symbol>)> {
+pub fn parse_once(
+    adapter: &dyn LanguageAdapter,
+    source: &str,
+) -> Result<(ParsedFile, Vec<Symbol>)> {
     let parsed = adapter.parse_source(source)?;
     let symbols = adapter.extract_symbols(&parsed)?;
     Ok((parsed, symbols))
@@ -34,7 +36,7 @@ pub fn benchmark_adapter(
     for _ in 0..iterations {
         let start = Instant::now();
         match parse_once(adapter.as_ref(), source) {
-            Ok((parsed, symbols)) => {
+            Ok((_parsed, symbols)) => {
                 total_elapsed += start.elapsed().as_micros();
                 total_symbols += symbols.len();
             }
@@ -54,10 +56,11 @@ pub fn benchmark_adapter(
 #[cfg(all(test, feature = "parsing"))]
 mod tests {
     use super::*;
-    use std::sync::Arc;
+    use crate::adapters::java::JavaAdapter;
     use crate::adapters::rust::RustAdapter;
     use crate::adapters::typescript::TypeScriptAdapter;
-    use crate::adapters::java::JavaAdapter;
+    use rayon::prelude::*;
+    use std::sync::Arc;
 
     const ITERATIONS: usize = 10;
 
@@ -112,7 +115,11 @@ mod tests {
             assert!(result.1.len() >= 2);
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 500, "parse latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 500,
+            "parse latency too high: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -125,7 +132,11 @@ mod tests {
             assert!(!result.1.is_empty());
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 1000, "medium source latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 1000,
+            "medium source latency too high: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -138,7 +149,11 @@ mod tests {
             assert!(!result.1.is_empty());
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 2000, "large source latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 2000,
+            "large source latency too high: {:?}",
+            elapsed
+        );
     }
 
     // --- Happy path: TypeScript ---
@@ -153,7 +168,11 @@ mod tests {
             assert!(result.1.len() >= 2);
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 500, "TS parse latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 500,
+            "TS parse latency too high: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -163,10 +182,17 @@ mod tests {
         let start = Instant::now();
         for _ in 0..5 {
             let result = parse_once(pool.get("typescript").unwrap().as_ref(), &source).unwrap();
-            assert!(!result.1.is_empty(), "TypeScript should extract symbols from large source");
+            assert!(
+                !result.1.is_empty(),
+                "TypeScript should extract symbols from large source"
+            );
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 2000, "TS large source latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 2000,
+            "TS large source latency too high: {:?}",
+            elapsed
+        );
     }
 
     // --- Happy path: Java ---
@@ -181,7 +207,11 @@ mod tests {
             assert!(result.1.len() >= 1);
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 500, "Java parse latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 500,
+            "Java parse latency too high: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -194,7 +224,11 @@ mod tests {
             assert!(!result.1.is_empty());
         }
         let elapsed = start.elapsed();
-        assert!(elapsed.as_millis() < 2000, "Java large source latency too high: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 2000,
+            "Java large source latency too high: {:?}",
+            elapsed
+        );
     }
 
     // --- Throughput tests ---
@@ -203,54 +237,66 @@ mod tests {
     fn bench_throughput_rust_parser() {
         let pool = make_pool();
         let source = generate_source_repetitions(&rust_pattern(0), 10);
-        let result = benchmark_adapter(&pool, "rust", &source, ITERATIONS).expect("rust should succeed");
-        
+        let result =
+            benchmark_adapter(&pool, "rust", &source, ITERATIONS).expect("rust should succeed");
+
         assert_eq!(result.iterations, ITERATIONS);
         assert!(result.symbols_count > 0);
-        let symbols_per_second = (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
+        let symbols_per_second =
+            (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
         eprintln!(
             "Rust throughput: {:.0} symbols/s ({}/{})",
-            symbols_per_second,
-            result.symbols_count,
-            result.source_len
+            symbols_per_second, result.symbols_count, result.source_len
         );
-        assert!(symbols_per_second > 100.0, "throughput too low: {:.0}", symbols_per_second);
+        assert!(
+            symbols_per_second > 100.0,
+            "throughput too low: {:.0}",
+            symbols_per_second
+        );
     }
 
     #[test]
     fn bench_throughput_typescript_parser() {
         let pool = make_pool();
         let source = generate_source_repetitions(&ts_pattern(0), 5);
-        let result = benchmark_adapter(&pool, "typescript", &source, ITERATIONS).expect("typescript should succeed");
-        
+        let result = benchmark_adapter(&pool, "typescript", &source, ITERATIONS)
+            .expect("typescript should succeed");
+
         assert_eq!(result.iterations, ITERATIONS);
         assert!(result.symbols_count > 0);
-        let symbols_per_second = (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
+        let symbols_per_second =
+            (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
         eprintln!(
             "TypeScript throughput: {:.0} symbols/s ({}/{})",
-            symbols_per_second,
-            result.symbols_count,
-            result.source_len
+            symbols_per_second, result.symbols_count, result.source_len
         );
-        assert!(symbols_per_second > 100.0, "throughput too low: {:.0}", symbols_per_second);
+        assert!(
+            symbols_per_second > 100.0,
+            "throughput too low: {:.0}",
+            symbols_per_second
+        );
     }
 
     #[test]
     fn bench_throughput_java_parser() {
         let pool = make_pool();
         let source = generate_source_repetitions(&java_pattern(0), 10);
-        let result = benchmark_adapter(&pool, "java", &source, ITERATIONS).expect("java should succeed");
-        
+        let result =
+            benchmark_adapter(&pool, "java", &source, ITERATIONS).expect("java should succeed");
+
         assert_eq!(result.iterations, ITERATIONS);
         assert!(result.symbols_count > 0);
-        let symbols_per_second = (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
+        let symbols_per_second =
+            (result.symbols_count as f64) / (result.elapsed_us as f64) * 1_000_000.0;
         eprintln!(
             "Java throughput: {:.0} symbols/s ({}/{})",
-            symbols_per_second,
-            result.symbols_count,
-            result.source_len
+            symbols_per_second, result.symbols_count, result.source_len
         );
-        assert!(symbols_per_second > 100.0, "throughput too low: {:.0}", symbols_per_second);
+        assert!(
+            symbols_per_second > 100.0,
+            "throughput too low: {:.0}",
+            symbols_per_second
+        );
     }
 
     // --- Thread-safety tests (parallel parsing) ---
@@ -267,9 +313,7 @@ mod tests {
                 };
                 (
                     lang.to_string(),
-                    format!(
-                        "fn func_{i}() {{}} class Class_{i} {{}} interface I_{i} {{}}",
-                    )
+                    format!("fn func_{i}() {{}} class Class_{i} {{}} interface I_{i} {{}}",),
                 )
             })
             .collect();
@@ -287,10 +331,14 @@ mod tests {
 
         let elapsed = start.elapsed();
         let total_symbols: usize = results.iter().map(|s| s.len()).sum();
-        
+
         assert_eq!(results.len(), 50, "all 50 sources should be parsed");
         assert!(total_symbols > 0, "should extract symbols");
-        assert!(elapsed.as_millis() < 5000, "parallel parsing too slow: {:?}", elapsed);
+        assert!(
+            elapsed.as_millis() < 5000,
+            "parallel parsing too slow: {:?}",
+            elapsed
+        );
     }
 
     #[test]
@@ -325,15 +373,18 @@ mod tests {
 
         assert_eq!(serial_result.len(), iterations);
         assert_eq!(parallel_result.len(), iterations);
-        
+
         eprintln!(
             "Serial: {:?}, Parallel: {:?}, Speedup: {:.2}x",
-            serial_elapsed, 
+            serial_elapsed,
             parallel_elapsed,
             serial_elapsed.as_micros() as f64 / parallel_elapsed.as_micros().max(1) as f64
         );
-        
-        assert!(parallel_elapsed < serial_elapsed * 10, "parallel should not be 10x slower");
+
+        assert!(
+            parallel_elapsed < serial_elapsed * 10,
+            "parallel should not be 10x slower"
+        );
     }
 
     // --- Unhappy path tests ---
@@ -435,7 +486,6 @@ mod tests {
         let dir = TempDir::new().expect("tempdir");
         create_file_set(dir.path(), 500);
 
-        let pool = Arc::new(make_pool());
         let start = Instant::now();
 
         let entries: Vec<_> = walkdir::WalkDir::new(dir.path())
@@ -550,7 +600,10 @@ mod tests {
             parallel_symbols
         );
 
-        assert_eq!(serial_symbols, parallel_symbols, "both should find same symbols");
+        assert_eq!(
+            serial_symbols, parallel_symbols,
+            "both should find same symbols"
+        );
         assert!(
             parallel_elapsed <= serial_elapsed * 2,
             "parallel should not be significantly slower"
@@ -617,27 +670,39 @@ mod tests {
     /// Helper to create a set of source files across multiple languages
     fn create_file_set(base_dir: &std::path::Path, count: usize) {
         let langs: Vec<(&str, &str, Box<dyn Fn(usize) -> String>)> = vec![
-            ("rs", "rust", Box::new(|i| {
-                format!(
-                    "fn function_{}(a: u32, b: u32) -> u32 {{ a + b }}\n\
+            (
+                "rs",
+                "rust",
+                Box::new(|i| {
+                    format!(
+                        "fn function_{}(a: u32, b: u32) -> u32 {{ a + b }}\n\
                      struct Struct_{} {{ value: u32, name: String }}\n\
                      pub mod module_{} {{\n    pub fn helper() {{}}\n}}\n\n",
-                    i, i, i
-                )
-            })),
-            ("ts", "typescript", Box::new(|i| {
-                format!(
+                        i, i, i
+                    )
+                }),
+            ),
+            (
+                "ts",
+                "typescript",
+                Box::new(|i| {
+                    format!(
                     "function process_{}(data: any) {{ return data; }}\n\
                      class Service_{} {{\n    private items: any[] = [];\n    add(item: any) {{ this.items.push(item); }}\n}}\n\n",
                     i, i
                 )
-            })),
-            ("java", "java", Box::new(|i| {
-                format!(
+                }),
+            ),
+            (
+                "java",
+                "java",
+                Box::new(|i| {
+                    format!(
                     "public class Repository_{} {{\n    private String name;\n    public void save(Object entity) {{}}\n    private List<Object> findAll() {{ return null; }}\n}}\n\n",
                     i
                 )
-            })),
+                }),
+            ),
         ];
 
         for i in 0..count {
