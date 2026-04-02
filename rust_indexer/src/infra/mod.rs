@@ -1,3 +1,4 @@
+pub mod benchmarks;
 pub mod git;
 pub mod jsonl;
 pub mod parser_pool;

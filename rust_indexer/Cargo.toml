@@ -43,6 +43,10 @@ assert_cmd = "2.0"
 predicates = "2.1"
 tempfile = "3.6"
 
+[[test]]
+name = "smoke_multi_lang"
+required-features = ["parsing"]
+
 
 [package.metadata]
 authors = ["provisory"]
