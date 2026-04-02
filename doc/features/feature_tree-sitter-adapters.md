@@ -49,7 +49,7 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 | Implementação funcional para Java (adicional) + testes (14) | ✅ |
 | ParserPool usando DashMap, thread-safe | ✅ |
 | ParserPool integração tests (9) | ✅ |
-| Testes totais: 126 passando, 0 falhas | ✅ |
+| Testes totais: 146 passando, 0 falhas | ✅ |
 | Compilação com feature flag (`--features parsing`) | ✅ |
 | Symbol normalization module | ✅ Done (`domain/normalize.rs`, 23 tests) |
 | Smoke test multi-linguagem (small repo) | ✅ Done (`tests/smoke_multi_lang.rs`, 11 tests) |
@@ -137,4 +137,4 @@ Para rodar todos os testes:
 cd rust_indexer && cargo test --features parsing
 ```
 
-Total: **126 testes passando** (fase-1 adapters = 44 adapter tests + 12 pool tests + 23 normalize tests + 20 benchmark tests + 27 outros tests)
+Total: **146 testes passando** (126 unitários + 20 integração, fase-1 adapters = 44 adapter tests + 12 pool tests + 23 normalize tests + 20 benchmark tests + 27 outros tests + 20 integration tests)
