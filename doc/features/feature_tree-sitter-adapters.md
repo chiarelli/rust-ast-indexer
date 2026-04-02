@@ -71,6 +71,13 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 - Cross-compilation para Windows/macOS pode exigir build tooling adjustments for tree-sitter C dependencies.
 - `tree-sitter-java` pode ter menor maturidade que linguagens populares (rust/TS) — verificar estabilidade do crate antes de integrar.
 
+#### Decisões técnicas
+
+- **Config::from_file** usa `serde_json::Value` ao invés de `#[derive(Deserialize)]` em `Config`.
+  - Motivo: evitar acoplar o struct de configuração ao ecossistema serde via derive, mantendo-o como um domain struct puro.
+  - Extração manual via `serde_json::Value.get()` com erros claros (`MissingField`, `InvalidValue`).
+  - Alternativa rejeitada: `#[derive(serde::Deserialize)]` — válido para projetos com serde-first, mas preferimos separar parsing de JSON do modelo.
+
 ### Plano de trabalho (iteração mínima)
 
 1. ~~Definir o trait LanguageAdapter~~ ✅
