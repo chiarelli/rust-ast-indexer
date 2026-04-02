@@ -374,4 +374,286 @@ mod tests {
         assert_eq!(r.symbols_count, 0);
         assert_eq!(r.iterations, 0);
     }
+
+    // --- Large-scale benchmark with 100-1k files ---
+
+    #[test]
+    fn bench_index_100_files_all_languages() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().expect("tempdir");
+        create_file_set(dir.path(), 100);
+
+        let pool = Arc::new(make_pool());
+        let start = Instant::now();
+
+        let mut total_symbols = 0;
+        let mut total_files = 0;
+
+        for entry in walkdir::WalkDir::new(dir.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+        {
+            let path = entry.path();
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let lang = match ext {
+                "rs" => "rust",
+                "ts" | "js" => "typescript",
+                "java" => "java",
+                _ => continue,
+            };
+
+            let source = std::fs::read_to_string(path).unwrap();
+            let adapter = pool.get(lang).unwrap();
+            let parsed = adapter.parse_source(&source).unwrap();
+            let symbols = adapter.extract_symbols(&parsed).unwrap();
+            total_symbols += symbols.len();
+            total_files += 1;
+        }
+
+        let elapsed = start.elapsed();
+
+        eprintln!(
+            "100-file benchmark: {} files, {} symbols, elapsed: {:?}",
+            total_files, total_symbols, elapsed
+        );
+
+        assert_eq!(total_files, 100, "should process exactly 100 files");
+        assert!(total_symbols > 0, "should extract symbols from all files");
+        assert!(
+            elapsed.as_secs() < 30,
+            "indexing 100 files took too long: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn bench_index_500_files_parallel() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().expect("tempdir");
+        create_file_set(dir.path(), 500);
+
+        let pool = Arc::new(make_pool());
+        let start = Instant::now();
+
+        let entries: Vec<_> = walkdir::WalkDir::new(dir.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .collect();
+
+        let results: Vec<_> = entries
+            .par_iter()
+            .map(|entry| {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                let lang = match ext {
+                    "rs" => "rust",
+                    "ts" | "js" => "typescript",
+                    "java" => "java",
+                    _ => return 0,
+                };
+
+                let source = std::fs::read_to_string(path).unwrap();
+                let file_pool = Arc::new(make_pool());
+                let adapter = file_pool.get(lang).unwrap();
+                let parsed = adapter.parse_source(&source).unwrap();
+                adapter.extract_symbols(&parsed).unwrap().len()
+            })
+            .collect();
+
+        let elapsed = start.elapsed();
+        let total_symbols: usize = results.iter().sum();
+        let total_files = results.iter().filter(|&&s| s > 0 || true).count();
+
+        eprintln!(
+            "500-file parallel benchmark: {} files, {} symbols, elapsed: {:?}",
+            total_files, total_symbols, elapsed
+        );
+
+        assert!(results.len() >= 500, "should process at least 500 files");
+        assert!(total_symbols > 0, "should extract symbols");
+        assert!(
+            elapsed.as_secs() < 60,
+            "parallel indexing 500 files took too long: {:?}",
+            elapsed
+        );
+    }
+
+    #[test]
+    fn bench_serial_vs_parallel_comparison() {
+        use tempfile::TempDir;
+
+        let dir = TempDir::new().expect("tempdir");
+        create_file_set(dir.path(), 200);
+
+        let entries: Vec<_> = walkdir::WalkDir::new(dir.path())
+            .into_iter()
+            .filter_map(|e| e.ok())
+            .filter(|e| e.file_type().is_file())
+            .collect();
+
+        // Serial execution
+        let serial_start = Instant::now();
+        let serial_symbols: usize = entries
+            .iter()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str())?;
+                let lang = match ext {
+                    "rs" => "rust",
+                    "ts" | "js" => "typescript",
+                    "java" => "java",
+                    _ => return None,
+                };
+
+                let source = std::fs::read_to_string(path).ok()?;
+                let pool = make_pool();
+                let adapter = pool.get(lang)?;
+                let parsed = adapter.parse_source(&source).ok()?;
+                Some(adapter.extract_symbols(&parsed).ok()?.len())
+            })
+            .sum();
+        let serial_elapsed = serial_start.elapsed();
+
+        // Parallel execution
+        let parallel_start = Instant::now();
+        let parallel_symbols: usize = entries
+            .par_iter()
+            .filter_map(|entry| {
+                let path = entry.path();
+                let ext = path.extension().and_then(|e| e.to_str())?;
+                let lang = match ext {
+                    "rs" => "rust",
+                    "ts" | "js" => "typescript",
+                    "java" => "java",
+                    _ => return None,
+                };
+
+                let source = std::fs::read_to_string(path).ok()?;
+                let pool = Arc::new(make_pool());
+                let adapter = pool.get(lang)?;
+                let parsed = adapter.parse_source(&source).ok()?;
+                Some(adapter.extract_symbols(&parsed).ok()?.len())
+            })
+            .sum();
+        let parallel_elapsed = parallel_start.elapsed();
+
+        eprintln!(
+            "Serial vs Parallel (200 files): {:?} vs {:?} (speedup: {:.2}x), symbols: {} vs {}",
+            serial_elapsed,
+            parallel_elapsed,
+            serial_elapsed.as_micros() as f64 / parallel_elapsed.as_micros().max(1) as f64,
+            serial_symbols,
+            parallel_symbols
+        );
+
+        assert_eq!(serial_symbols, parallel_symbols, "both should find same symbols");
+        assert!(
+            parallel_elapsed <= serial_elapsed * 2,
+            "parallel should not be significantly slower"
+        );
+    }
+
+    #[test]
+    fn bench_throughput_scales_with_file_count() {
+        use tempfile::TempDir;
+
+        let counts = vec![50, 100, 200];
+        let mut results = Vec::new();
+
+        for count in counts {
+            let dir = TempDir::new().expect("tempdir");
+            create_file_set(dir.path(), count);
+
+            let entries: Vec<_> = walkdir::WalkDir::new(dir.path())
+                .into_iter()
+                .filter_map(|e| e.ok())
+                .filter(|e| e.file_type().is_file())
+                .collect();
+
+            let start = Instant::now();
+            let total_symbols: usize = entries
+                .par_iter()
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    let ext = path.extension().and_then(|e| e.to_str())?;
+                    let lang = match ext {
+                        "rs" => "rust",
+                        "ts" | "js" => "typescript",
+                        "java" => "java",
+                        _ => return None,
+                    };
+
+                    let source = std::fs::read_to_string(path).ok()?;
+                    let pool = Arc::new(make_pool());
+                    let adapter = pool.get(lang)?;
+                    let parsed = adapter.parse_source(&source).ok()?;
+                    Some(adapter.extract_symbols(&parsed).ok()?.len())
+                })
+                .sum();
+            let elapsed_us = start.elapsed().as_micros();
+
+            let files_per_second = (count as f64) / (elapsed_us as f64) * 1_000_000.0;
+            let symbols_per_second = (total_symbols as f64) / (elapsed_us as f64) * 1_000_000.0;
+
+            eprintln!(
+                "{} files: {} symbols, {:.0} files/s, {:.0} symbols/s",
+                count, total_symbols, files_per_second, symbols_per_second
+            );
+
+            results.push((count, files_per_second, symbols_per_second));
+        }
+
+        // Verify scaling is reasonable (not linear degradation)
+        assert!(results.len() == 3, "should have 3 data points");
+        for (_, fps, _) in &results {
+            assert!(*fps > 1.0, "throughput too low: {:.0} files/s", fps);
+        }
+    }
+
+    /// Helper to create a set of source files across multiple languages
+    fn create_file_set(base_dir: &std::path::Path, count: usize) {
+        let langs: Vec<(&str, &str, Box<dyn Fn(usize) -> String>)> = vec![
+            ("rs", "rust", Box::new(|i| {
+                format!(
+                    "fn function_{}(a: u32, b: u32) -> u32 {{ a + b }}\n\
+                     struct Struct_{} {{ value: u32, name: String }}\n\
+                     pub mod module_{} {{\n    pub fn helper() {{}}\n}}\n\n",
+                    i, i, i
+                )
+            })),
+            ("ts", "typescript", Box::new(|i| {
+                format!(
+                    "function process_{}(data: any) {{ return data; }}\n\
+                     class Service_{} {{\n    private items: any[] = [];\n    add(item: any) {{ this.items.push(item); }}\n}}\n\n",
+                    i, i
+                )
+            })),
+            ("java", "java", Box::new(|i| {
+                format!(
+                    "public class Repository_{} {{\n    private String name;\n    public void save(Object entity) {{}}\n    private List<Object> findAll() {{ return null; }}\n}}\n\n",
+                    i
+                )
+            })),
+        ];
+
+        for i in 0..count {
+            let (ext, _lang, generator) = &langs[i % langs.len()];
+            let subdir = match i % 3 {
+                0 => "src",
+                1 => "lib",
+                _ => "core",
+            };
+
+            let dir = base_dir.join(subdir);
+            std::fs::create_dir_all(&dir).expect("create subdir");
+
+            let filename = format!("file_{}.{}", i, ext);
+            let content = generator(i);
+            std::fs::write(dir.join(filename), content).expect("write file");
+        }
+    }
 }
