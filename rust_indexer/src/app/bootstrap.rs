@@ -218,7 +218,7 @@ mod tests {
         struct StubAdapter;
         impl LanguageAdapter for StubAdapter {
             fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
-                Ok(ParsedFile { language: "stub".to_string(), source_len: 0 })
+                Ok(ParsedFile { language: "stub".to_string(), source_len: 0, source: String::new() })
             }
             fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<crate::domain::types::Symbol>> {
                 Ok(vec![])

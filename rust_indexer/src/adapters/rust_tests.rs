@@ -12,8 +12,9 @@ mod tests {
         assert_eq!(parsed.source_len, src.len());
 
         let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
-        // placeholder implementation currently returns empty vector
-        assert!(syms.is_empty());
+        assert_eq!(syms.len(), 1);
+        assert_eq!(syms[0].name, "hello");
+        assert_eq!(syms[0].kind, "function");
     }
 
     #[test]
