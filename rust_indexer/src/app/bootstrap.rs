@@ -142,6 +142,7 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     {
         crate::adapters::rust::register_to(&registry);
         crate::adapters::typescript::register_to(&registry);
+        crate::adapters::java::register_to(&registry);
     }
 
     Arc::new(ApplicationContext { registry, parser_pool, config, metrics: None, logger: None })

@@ -22,13 +22,17 @@ tree-sitter = "0.20"
 
 # add tree-sitter-rust as optional feature during CI/dev
 [features]
-parsing = ["tree-sitter-rust", "tree-sitter-javascript"]
+parsing = ["tree-sitter-rust", "tree-sitter-javascript", "tree-sitter-java"]
 
 [dependencies.tree-sitter-rust]
 version = "0.20"
 optional = true
 
 [dependencies.tree-sitter-javascript]
+version = "0.20"
+optional = true
+
+[dependencies.tree-sitter-java]
 version = "0.20"
 optional = true
 
