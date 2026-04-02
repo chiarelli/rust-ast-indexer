@@ -7,3 +7,4 @@ node_modules/
 rust_indexer/target/
 *.Trash*
 .project-skills/
+.worktrees/skill/
