@@ -6,3 +6,6 @@ pub mod domain;
 pub mod infra;
 
 pub use cli::run_cli;
+
+pub mod adapters;
+pub mod app;

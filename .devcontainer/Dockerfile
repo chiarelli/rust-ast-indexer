@@ -23,6 +23,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     make g++ \
     trash-cli \
+    ssh \
     && rm -rf /var/lib/apt/lists/*
 
 # Node.js 18 (oficial)
@@ -37,14 +38,17 @@ ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
+# Associando usúario ao grupo
 RUN groupadd --gid $USER_GID $USERNAME \
     && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
     && chsh -s /usr/bin/zsh $USERNAME \
     && mkdir -p /workspace \
     && chown -R $USERNAME:$USERNAME /workspace
-
-RUN ln -s /usr/bin/clear /usr/bin/cls
-
+    
+RUN ln -s /usr/bin/clear /usr/bin/cls \
+    # Instalando o Crush AI DevTools
+    && npm install -g @charmland/crush
+    
 USER $USERNAME
 WORKDIR /workspace
 

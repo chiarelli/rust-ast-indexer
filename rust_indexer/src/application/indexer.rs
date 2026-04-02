@@ -3,6 +3,7 @@ use std::sync::Arc;
 
 use rayon::prelude::*;
 
+use crate::app::bootstrap::ApplicationContext;
 use crate::domain::types::{Chunk, FileRecord};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
@@ -12,7 +13,9 @@ pub struct IndexOptions {
     pub explicit_files: Option<Vec<String>>,
 }
 
-pub struct Indexer {}
+pub struct Indexer {
+    ctx: Option<Arc<ApplicationContext>>,
+}
 
 pub struct IndexResult {
     pub chunks: Vec<Chunk>,
@@ -27,7 +30,11 @@ impl Default for Indexer {
 
 impl Indexer {
     pub fn new() -> Self {
-        Indexer {}
+        Indexer { ctx: None }
+    }
+
+    pub fn from_context(ctx: Arc<ApplicationContext>) -> Self {
+        Indexer { ctx: Some(ctx) }
     }
 
     /// Simple serial index_path (keeps previous behavior)
@@ -91,9 +98,11 @@ impl Indexer {
             walk_path(&scan_opts)?
         };
 
-        // Pre-warm parser pool (one parser per thread)
-        let pool = ParserPool::new(opts.max_concurrency);
-        let pool = Arc::new(pool);
+        let pool = if let Some(ctx) = &self.ctx {
+            ctx.parser_pool.clone()
+        } else {
+            Arc::new(ParserPool::new(opts.max_concurrency))
+        };
 
         let (tx, rx) = mpsc::channel();
 

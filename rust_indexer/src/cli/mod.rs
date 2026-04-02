@@ -8,15 +8,26 @@ use crate::application::indexer::{IndexOptions, Indexer};
 use crate::application::protocol::{Command, Event};
 use crate::infra::jsonl;
 
-pub fn run_cli() {
+use std::sync::Arc;
+
+use crate::app::bootstrap::{ApplicationContext, Config, init_context};
+
+pub fn run_cli_default() {
+    let cfg = Config::load();
+    let ctx = init_context(cfg);
+    run_cli(ctx);
+}
+
+pub fn run_cli(ctx: Arc<ApplicationContext>) {
     // emit capabilities at startup
+    let languages = ctx.registry.list_languages();
     let ev = Event {
         protocol_version: "1.0.0".into(),
         r#type: "event".into(),
         event: "capabilities".into(),
         job_id: None,
         payload: Some(
-            json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
+            json!({"version":"0.1.0","languages":languages,"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
         ),
     };
     jsonl::write_event(&ev);
@@ -37,7 +48,7 @@ pub fn run_cli() {
 
                 // if dispatcher didn't handle, try to parse and forward to internal handler
                 if let Some(cmd) = jsonl::read_command(l) {
-                    handle_command(cmd);
+                    handle_command(ctx.clone(), cmd);
                 } else {
                     // malformed JSON already handled by dispatcher, but fallback emit
                     let ev = Event {
@@ -63,16 +74,17 @@ pub fn run_cli() {
 }
 
 #[allow(dead_code)]
-fn handle_command(cmd: Command) {
+fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
     match cmd.command.as_str() {
         "list_languages" => {
+            let languages = ctx.registry.list_languages();
             let ev = Event {
                 protocol_version: "1.0.0".into(),
                 r#type: "event".into(),
                 event: "capabilities".into(),
                 job_id: None,
                 payload: Some(
-                    json!({"version":"0.1.0","languages":["rust","go","python","typescript","javascript","java"],"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
+                    json!({"version":"0.1.0","languages":languages,"features":["jsonl","incremental_index","git_diff","pause_resume","mcp_compatible"]}),
                 ),
             };
             jsonl::write_event(&ev);
@@ -123,11 +135,10 @@ fn handle_command(cmd: Command) {
                     .and_then(|o| o.get("max_concurrency"))
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
-                    .unwrap_or_else(num_cpus::get),
+                    .unwrap_or(ctx.config.max_concurrency),
                 explicit_files: None,
             };
 
-            // spawn job thread
             thread::spawn(move || {
                 let ev_start = Event {
                     protocol_version: "1.0.0".into(),
@@ -138,12 +149,11 @@ fn handle_command(cmd: Command) {
                 };
                 jsonl::write_event(&ev_start);
 
-                // Emit file_listed events (streaming) before running indexer
                 let scan_opts = crate::infra::walker::ScanOptions::new(&path);
                 let _ =
                     crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
 
-                let indexer = Indexer::new();
+                let indexer = Indexer::from_context(ctx.clone());
                 let result = indexer.index_path(&path, opts);
                 match result {
                     Ok(result) => {
@@ -368,11 +378,10 @@ fn handle_command(cmd: Command) {
                     .and_then(|o| o.get("max_concurrency"))
                     .and_then(|v| v.as_u64())
                     .map(|v| v as usize)
-                    .unwrap_or_else(num_cpus::get),
+                    .unwrap_or(ctx.config.max_concurrency),
                 explicit_files,
             };
 
-            // spawn job thread
             thread::spawn(move || {
                 let ev_start = Event {
                     protocol_version: "1.0.0".into(),
@@ -383,7 +392,6 @@ fn handle_command(cmd: Command) {
                 };
                 jsonl::write_event(&ev_start);
 
-                // Emit file_listed events (streaming) before running indexer
                 if let Some(ref files) = opts.explicit_files {
                     crate::infra::walker::emit_file_listed_from_records(&files.iter().map(|p| crate::domain::types::FileRecord { path: p.clone(), size: 0, mtime: 0, hash: "".to_string(), language: None }).collect::<Vec<_>>(), Some(job_id.clone()));
                 } else {
@@ -391,7 +399,7 @@ fn handle_command(cmd: Command) {
                     let _ = crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
                 }
 
-                let indexer = Indexer::new();
+                let indexer = Indexer::from_context(ctx.clone());
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
                 match result {
                     Ok(result) => {
@@ -495,6 +503,7 @@ impl CmdExt for Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::app::test_bootstrap::test_context;
     use crate::application::protocol::Command;
     use serde_json::json;
     use std::{thread, time::Duration};
@@ -509,7 +518,7 @@ mod tests {
             job_id: None,
             payload: None,
         };
-        handle_command(cmd);
+        handle_command(test_context(), cmd);
     }
 
     #[test]
@@ -522,7 +531,7 @@ mod tests {
             job_id: Some("job-ut-1".into()),
             payload: Some(json!({"path": ".", "options": {"max_concurrency": 1}})),
         };
-        handle_command(cmd);
+        handle_command(test_context(), cmd);
         thread::sleep(Duration::from_millis(20)); // Give spawned thread a chance to start
     }
 
@@ -536,7 +545,7 @@ mod tests {
             job_id: Some("job-ut-2".into()),
             payload: None,
         };
-        handle_command(cmd);
+        handle_command(test_context(), cmd);
     }
 
     #[test]
@@ -549,7 +558,7 @@ mod tests {
             job_id: Some("job-ut-3".into()),
             payload: Some(json!({})),
         };
-        handle_command(cmd);
+        handle_command(test_context(), cmd);
     }
 
     #[test]
@@ -562,7 +571,7 @@ mod tests {
             job_id: Some("job-ut-4".into()),
             payload: None,
         };
-        handle_command(cmd);
+        handle_command(test_context(), cmd);
     }
 
     #[test]
@@ -575,7 +584,7 @@ mod tests {
             job_id: Some("job-ut-5".into()),
             payload: None,
         };
-        handle_command(cmd_resume);
+        handle_command(test_context(), cmd_resume);
 
         let cmd_inc = Command {
             protocol_version: "1.0.0".into(),
@@ -585,7 +594,7 @@ mod tests {
             job_id: Some("job-ut-6".into()),
             payload: Some(json!({"path": "."})),
         };
-        handle_command(cmd_inc);
+        handle_command(test_context(), cmd_inc);
     }
 
     #[test]

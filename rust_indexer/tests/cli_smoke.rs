@@ -1,7 +1,6 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, Command, Stdio};
-use tempfile::tempdir;
 
 fn spawn_indexer() -> Child {
     // Try to locate built binary via CARGO_BIN_EXE; if not set (running via `cargo test`),
