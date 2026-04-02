@@ -18,51 +18,37 @@ Arquitetura DDD-lite com módulos: domain, application, infra, cli.
 
 - Rust (stable)
 - Cargo
+- Make (GNU Make)
+
+## Comandos do Make
+
+O projeto inclui um Makefile com atalhos para os comandos mais comuns. Use `make help` para listar todos os targets.
+
+| Comando                    | Descrição                                     |
+|----------------------------|-----------------------------------------------|
+| `make test`                | Todos os testes (unit + integração)           |
+| `make unit`                | Só unitários (`--lib`)                        |
+| `make integration`         | Só testes de integração (`tests/*.rs`)        |
+| `make smoke`               | Só smoke tests (`tests/smoke_*.rs`)           |
+| `make bench`               | Todos os benchmarks com saída detalhada       |
+| `make bench-serial-parallel` | Serial vs paralelo (200 files)              |
+| `make bench-throughput`    | Throughput com 50, 100, 200 arquivos          |
+| `make bench-scale`         | Escala grande: 100 e 500 arquivos             |
+| `make bench-full`          | Relatório completo de benchmarks              |
+| `make clean`               | Limpa build artifacts                         |
+| `make check`               | Verifica compilação sem executar              |
+| `make format`              | Formata o código (`cargo fmt`)                |
+| `make lint`                | Executa clippy com warnings como erro         |
 
 ## Executando testes
 
-### Testes unitários e de integração
+O comando completo é:
 
 ```bash
 cd rust_indexer && cargo test --features parsing
 ```
 
-### Testes específicos por módulo
-
-```bash
-# Adaptação por linguagem (44 testes de adapters)
-cargo test --features parsing adapters
-
-# Parsing pool (9 testes de integração multi-linguagem)
-cargo test --features parsing parser-pool
-
-# Normalização de símbolos (23 testes)
-cargo test --features parsing normalize
-
-# Smoke tests multi-linguagem
-cargo test --features parsing smoke_multi_lang
-```
-
-### Performance e Benchmarks
-
-```bash
-# Todos os benchmarks do ParserPool
-cargo test --features parsing infra::benchmarks -- --nocapture
-
-# Benchmark: 100 arquivos serial
-cargo test --features parsing bench_index_100_files_all_languages -- --nocapture
-
-# Benchmark: 500 arquivos com paralelismo Rayon
-cargo test --features parsing bench_index_500_files_parallel -- --nocapture
-
-# Comparação serial vs paralelo (200 arquivos)
-cargo test --features parsing bench_serial_vs_parallel_comparison -- --nocapture
-
-# Throughput com scaling (50, 100, 200 arquivos)
-cargo test --features parsing bench_throughput_scales_with_file_count -- --nocapture
-```
-
-> **Nota:** A flag `--nocapture` é necessária para visualizar métricas de performance.
+Ou use `make test`, `make unit`, `make bench` — veja [Comandos do Make](#comandos-do-make).
 
 ## Resultados de Performance
 
