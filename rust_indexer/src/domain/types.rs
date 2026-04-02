@@ -22,6 +22,21 @@ pub struct Symbol {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct NormalizedSymbol {
+    pub id: String,
+    pub name: String,
+    pub kind: String,
+    pub qualified_name: String,
+    pub file_path: String,
+    pub start_line: usize,
+    pub end_line: usize,
+    pub signature: Option<String>,
+    pub language: Option<String>,
+    pub is_overloaded: bool,
+    pub overload_index: usize,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Chunk {
     pub id: String,
     pub file_path: String,

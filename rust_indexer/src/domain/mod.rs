@@ -1,5 +1,7 @@
+pub mod normalize;
 pub mod parser;
 pub mod types;
 
 // Domain-level re-exports
-pub use types::{Chunk, FileRecord, Symbol};
+pub use normalize::normalize_symbols;
+pub use types::{Chunk, FileRecord, NormalizedSymbol, Symbol};
