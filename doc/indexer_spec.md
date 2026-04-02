@@ -99,3 +99,159 @@ On Git errors, the sequence is:
 ## Next steps
 
 - Add an integration smoke test (CI) that creates a temporary git repo, commits files, modifies them, and executes the binary with `incremental_index` payload to validate the end-to-end behavior. This will be implemented as the next task.
+
+---
+
+# Tree-sitter Language Adapters
+
+## Purpose
+
+The `LanguageAdapter` trait provides a unified interface for parsing source code and extracting symbols across multiple languages. It enables compile-time language adapter registration via Cargo features.
+
+## Adapter Lifecycle
+
+Adapters are registered at application bootstrap and stored in both a `Registry` (for lookup by name) and a `ParserPool` (thread-safe concurrent access via `DashMap`).
+
+### Registration
+
+```rust
+let pool = ParserPool::new();
+pool.register("rust", Arc::new(RustAdapter));
+pool.register("typescript", Arc::new(TypeScriptAdapter));
+pool.register("javascript", Arc::new(TypeScriptAdapter));
+pool.register("java", Arc::new(JavaAdapter));
+```
+
+At bootstrap (with `--features parsing`), all adapters are automatically registered via the `register_language_adapter!` macro.
+
+## LanguageAdapter Trait
+
+```rust
+use crate::domain::parser::ParsedFile;
+use crate::domain::types::Symbol;
+use anyhow::Result;
+
+pub trait LanguageAdapter: Send + Sync + 'static {
+    /// Parse source code into an intermediate form.
+    /// Returns the parsed representation with raw source string.
+    fn parse_source(&self, source: &str) -> Result<ParsedFile>;
+
+    /// Extract symbols from a previously parsed file.
+    /// Symbols include functions, classes, structs, fields, etc.
+    fn extract_symbols(&self, parsed: &ParsedFile) -> Result<Vec<Symbol>>;
+
+    /// Clone the adapter into a box for ownership transfer.
+    fn box_clone(&self) -> Box<dyn LanguageAdapter>;
+}
+```
+
+### Return Types
+
+**ParsedFile**:
+
+| Field         | Type   | Description                    |
+|---------------|--------|--------------------------------|
+| `language`    | String | Language name (e.g., "rust")   |
+| `source_len`  | usize  | Length of source in bytes      |
+| `source`      | String | Original source text           |
+
+**Symbol**:
+
+| Field         | Type         | Description                           |
+|---------------|--------------|---------------------------------------|
+| `id`          | String       | Unique identifier (e.g., "path:name") |
+| `name`        | String       | Symbol name                           |
+| `kind`        | String       | Symbol kind (fn, struct, class, etc.) |
+| `scope`       | Option<String> | Enclosing scope/mod/class            |
+| `file_path`   | String       | Source file path                      |
+| `start_line`  | usize        | First line (0-based)                  |
+| `end_line`    | usize        | Last line (0-based)                   |
+| `signature`   | Option<String> | Full source text of the symbol       |
+
+### Normalized Symbols
+
+After extraction, symbols can be normalized to a richer representation (`NormalizedSymbol`):
+
+```rust
+use rust_indexer::domain::normalize_symbols;
+
+let symbols: Vec<Symbol> = adapter.extract_symbols(&parsed)?;
+let normalized = normalize_symbols(&symbols, Some("rust"));
+```
+
+**NormalizedSymbol** fields:
+
+| Field             | Type         | Description                              |
+|-------------------|--------------|------------------------------------------|
+| `id`              | String       | Unique identifier                        |
+| `name`            | String       | Symbol name                              |
+| `kind`            | String       | Symbol kind                              |
+| `qualified_name`  | String       | Full path (e.g., "UserService::addUser") |
+| `file_path`       | String       | Source file path                         |
+| `start_line`      | usize        | First line (0-based)                     |
+| `end_line`        | usize        | Last line (0-based)                      |
+| `signature`       | Option<String> | Full source source text of the symbol  |
+| `language`        | Option<String> | Language name                          |
+| `is_overloaded`   | bool         | True if same file+kind+name exists more than once |
+| `overload_index`  | usize        | Zero-based index within the overload group |
+
+**Normalization behavior**:
+
+- `qualified_name` combines `scope` and `name` with `::` separator
+- Detects overloaded symbols (same file+kind+name) and assigns `is_overloaded=true`
+- Overload indices are assigned by source order (sorted by `start_line`)
+- Final result is sorted by `file_path`, then `start_line`
+
+## Language Detection
+
+File extension → language mapping (`detect_language()` in `indexer.rs`):
+
+| Extension  | Language   |
+|------------|------------|
+| `.rs`      | rust       |
+| `.ts`, `.tsx` | typescript |
+| `.js`, `.jsx` | javascript |
+| `.java`    | java       |
+
+Unsupported extensions are skipped silently.
+
+## Multi-Language Processing
+
+The indexer uses Rayon for parallel processing of files:
+
+```rust
+let result = indexer.index_path_parallel(path, IndexOptions { max_concurrency: 4 }, None)?;
+```
+
+Each file is parsed concurrently. The `ParserPool` ensures thread-safe adapter access via `DashMap`.
+
+## ParserPool
+
+```rust
+use rust_indexer::infra::parser_pool::ParserPool;
+
+let pool = ParserPool::new();
+pool.register("rust", Arc::new(RustAdapter));
+let adapter = pool.get("rust"); // returns Option<Arc<dyn LanguageAdapter>>
+```
+
+`ParserPool` is `Clone` and `Send + Sync`. Cloned instances share the underlying `DashMap`.
+
+## Performance
+
+See [README.md](README.md#resultados-de-performance) for benchmark results.
+
+**Summary:**
+
+- **3.69× speedup** when processing 200 files with Rayon vs serial
+- **6K-7K files/s** throughput across Rust, TypeScript, and Java
+- **24K-26K symbols/s** extraction rate
+- Linear scalability with no degradation at 200 files
+
+## Error Handling
+
+| Error Type          | Source                        | Recovery                      |
+|---------------------|-------------------------------|-------------------------------|
+| Parse failure       | `tree-sitter` invalid syntax  | File skipped, chunk still emitted with empty symbols |
+| Missing language    | No adapter registered         | Chunk emitted without symbols |
+| Missing source      | File not readable             | Empty string used as fallback |

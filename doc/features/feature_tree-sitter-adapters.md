@@ -25,14 +25,17 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 | ✅ | integration | bootstrap wiring: registro de todos adapters no Registry e ParserPool | `4fe5671` |
 | ❌ | adapters/python | não implementado (opcional, descartado) | — |
 
-### fase-2: integration & performance — PARCIALMENTE INICIADA
+### fase-2: integration & performance — EM ANDAMENTO
 
 | Status | Task | Atividade | Observação |
 |---|---|---|---|
 | ✅ | parser-pool-integration | integrar adapters ao ParserPool | Done via `4fe5671` |
-| ⏸️ | parser-pool-integration | medir latência e throughput | Não iniciado |
-| ⏸️ | symbol-normalization | mapear símbolos extraídos para o modelo Symbol | Não iniciado |
-| ⏸️ | symbol-normalization | testar nested symbols e overloaded | Não iniciado |
+| ✅ | parser-pool-integration | medir latência e throughput | Done (20 benchmarks) |
+| ✅ | symbol-normalization | mapear símbolos extraídos para o modelo Symbol | Done (`domain/normalize.rs`) |
+| ✅ | symbol-normalization | testar nested symbols e overloaded | Done (23 unit tests) |
+| ✅ | smoke-test | smoke test multi-linguagem | Done (`tests/smoke_multi_lang.rs`) |
+| ✅ | benchmarks | benchmark com 100-500 arquivos | Done (4 novos testes de escala) |
+| ✅ | docs | atualizar indexer_spec.md com LanguageAdapter API | Done |
 
 ---
 
@@ -46,11 +49,11 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 | Implementação funcional para Java (adicional) + testes (14) | ✅ |
 | ParserPool usando DashMap, thread-safe | ✅ |
 | ParserPool integração tests (9) | ✅ |
-| Testes totais: 83 passando, 0 falhas | ✅ |
+| Testes totais: 126 passando, 0 falhas | ✅ |
 | Compilação com feature flag (`--features parsing`) | ✅ |
-| Symbol normalization module | ⏸️ Pendente fase-2 |
-| Smoke test multi-linguagem (small repo) | ⏸️ Pendente fase-2 |
-| Perf measurement com 100-1k files | ⏸️ Pendente fase-2 |
+| Symbol normalization module | ✅ Done (`domain/normalize.rs`, 23 tests) |
+| Smoke test multi-linguagem (small repo) | ✅ Done (`tests/smoke_multi_lang.rs`, 11 tests) |
+| Perf measurement com 100-1k files | ✅ Done (`infra/benchmarks.rs`, 20 tests) |
 
 ---
 
@@ -76,7 +79,7 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 4. ~~Adicionar TypeScript adapter com tree-sitter-javascript~~ ✅
 5. ~~Adicionar Java adapter com tree-sitter-java~~ ✅
 6. ~~Integrar adapters ao ParserPool~~ ✅
-7. **Smoke test multi-linguagem** e update da spec — pendente fase-2
+7. **Smoke test multi-linguagem** e update da spec — ✅ Done (`tests/smoke_multi_lang.rs`, `doc/indexer_spec.md`)
 
 ### Artefatos a produzir
 
@@ -85,8 +88,8 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 - src/adapters/typescript.rs (implementation) ✅
 - src/adapters/java.rs (implementation) ✅
 - tests unitários por adapter ✅ (16 rust + 14 ts + 14 java = 44 tests)
-- doc/indexer_spec.md additions: Tree-sitter adapters API and examples ⏸️ futuro
-- smoke integration que roda indexer em um pequeno repo multi-linguagem ⏸️ fase-2
+- doc/indexer_spec.md additions: Tree-sitter adapters API and examples ✅ Done
+- smoke integration que roda indexer em um pequeno repo multi-linguagem ✅ Done (`tests/smoke_multi_lang.rs`)
 - ✅ tree-sitter grammars crates compilam com feature flags e optional-deps
 - ✅ Variações entre ASTs mitigadas por testes unitários extensivos por linguagem
 - ⚠️ Cross-compilation para Windows/macOS pode exigir build tooling adjustments (não testado)
@@ -107,7 +110,10 @@ Implementar adaptação de Tree-sitter por linguagem: parsers, extração de sí
 | `src/adapters/java_tests.rs` | 14 testes unitários Java |
 | `src/infra/parser_pool.rs` | ParserPool com DashMap + 3 unit + 9 integration tests |
 | `src/application/indexer.rs` | `detect_language()` por extensão |
-| `src/app/bootstrap.rs` | Registro de todos adapters |
+| `src/app/bootstrap.rs` | Registro de todos adapters
+| `src/domain/normalize.rs` | Symbol normalization (qualified names, overload detection) + 23 tests
+| `src/infra/benchmarks.rs` | ParserPool benchmarks + 20 tests
+| `tests/smoke_multi_lang.rs` | Multi-language smoke integration tests (11 tests) |
 
 **Configuração:**
 | Arquivo | Descrição |
@@ -131,4 +137,4 @@ Para rodar todos os testes:
 cd rust_indexer && cargo test --features parsing
 ```
 
-Total: **83 testes passando** (fase-1 adapters = 44 adapter tests + 12 pool tests + 27 outros tests)
+Total: **126 testes passando** (fase-1 adapters = 44 adapter tests + 12 pool tests + 23 normalize tests + 20 benchmark tests + 27 outros tests)
