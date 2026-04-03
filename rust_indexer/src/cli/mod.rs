@@ -164,7 +164,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
 
                 let indexer = Indexer::from_context(ctx.clone());
-                let result = indexer.index_path(&path, opts);
+                let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
                 match result {
                     Ok(result) => {
                         for chunk in &result.chunks {

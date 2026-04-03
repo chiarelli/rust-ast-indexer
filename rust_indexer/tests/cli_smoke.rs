@@ -113,3 +113,71 @@ fn smoke_unknown_command_emits_error() {
     let _ = child.kill();
     let _ = child.wait();
 }
+
+#[test]
+fn smoke_index_path_emits_import_and_call_events() {
+    let mut child = spawn_indexer();
+    let stdout = child.stdout.take().expect("child stdout");
+    let mut reader = BufReader::new(stdout);
+    let mut stdin = child.stdin.take().expect("child stdin");
+
+    // consume capabilities
+    let cap = read_next_event(&mut reader);
+    assert_eq!(cap["event"], "capabilities");
+
+    // create tempdir with a Rust file that has imports and function calls
+    let td = tempfile::tempdir().unwrap();
+    std::fs::write(
+        td.path().join("lib.rs"),
+        b"use std::collections::HashMap;\n\nfn main() {\n    let map = HashMap::new();\n    println!(\"hello\");\n}\n",
+    )
+    .unwrap();
+
+    let cmd = json!({
+        "protocol_version": "1.0.0",
+        "type": "command",
+        "command": "index_path",
+        "seq": 20,
+        "job_id": "job-import-call-smoke",
+        "payload": {
+            "path": td.path().to_str().unwrap(),
+            "options": {"max_concurrency": 1, "extract_imports": true, "extract_calls": true}
+        }
+    });
+    writeln!(stdin, "{}", cmd.to_string()).expect("failed to write command");
+
+    // Collect all events until job_completed
+    let mut got_import_edge = false;
+    let mut got_call_edge = false;
+    let mut got_completed = false;
+
+    for _ in 0..2000 {
+        let ev = read_next_event(&mut reader);
+        let name = ev["event"].as_str().unwrap_or("");
+        if name == "import_edge" {
+            got_import_edge = true;
+            // validate basic structure
+            let payload = &ev["payload"];
+            assert!(payload["from_file"].as_str().is_some(), "import_edge should have from_file");
+            assert!(payload["to_module"].as_str().is_some(), "import_edge should have to_module");
+            assert!(payload["import_kind"].as_str().is_some(), "import_edge should have import_kind");
+        }
+        if name == "call_edge" {
+            got_call_edge = true;
+            let payload = &ev["payload"];
+            assert!(payload["callee_name"].as_str().is_some(), "call_edge should have callee_name");
+            assert!(payload["call_kind"].as_str().is_some(), "call_edge should have call_kind");
+        }
+        if name == "job_completed" && ev["job_id"] == "job-import-call-smoke" {
+            got_completed = true;
+            break;
+        }
+    }
+
+    let _ = child.kill();
+    let _ = child.wait();
+
+    assert!(got_completed, "did not receive job_completed");
+    assert!(got_import_edge, "did not receive any import_edge events");
+    assert!(got_call_edge, "did not receive any call_edge events");
+}

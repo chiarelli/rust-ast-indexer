@@ -1,7 +1,6 @@
 use std::sync::mpsc::{self};
 use std::sync::Arc;
 
-use crate::adapters::LanguageAdapter;
 use crate::app::bootstrap::ApplicationContext;
 use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord};
@@ -160,8 +159,12 @@ impl Indexer {
                                 if let Ok(imports) = adapter.extract_imports(&parsed) {
                                     let lang_for_norm = lang.clone().unwrap_or_default();
                                     for raw_edge in imports {
-                                        let normalized = normalize_import(&raw_edge, &lang_for_norm);
-                                        crate::infra::jsonl::write_import_event(job_id.clone(), &normalized);
+                                        let normalized =
+                                            normalize_import(&raw_edge, &lang_for_norm);
+                                        crate::infra::jsonl::write_import_event(
+                                            job_id.clone(),
+                                            &normalized,
+                                        );
                                     }
                                 }
                             }
@@ -170,7 +173,10 @@ impl Indexer {
                             if opts.extract_calls {
                                 if let Ok(calls) = adapter.extract_calls(&parsed) {
                                     for edge in calls {
-                                        crate::infra::jsonl::write_call_event(job_id.clone(), &edge);
+                                        crate::infra::jsonl::write_call_event(
+                                            job_id.clone(),
+                                            &edge,
+                                        );
                                     }
                                 }
                             }
