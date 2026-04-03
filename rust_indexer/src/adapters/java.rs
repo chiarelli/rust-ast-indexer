@@ -184,11 +184,66 @@ mod java_adapter {
             }
         }
 
-        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        // Collect call edges by traversing the tree and matching "method_invocation" nodes
+        fn collect_calls(
+            cursor: &mut tree_sitter::TreeCursor,
+            source: &str,
+            file_path: &str,
+            edges: &mut Vec<crate::domain::types::CallEdge>,
+        ) {
+            loop {
+                let node = cursor.node();
+                let kind = node.kind();
+
+                if kind == "method_invocation" {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    // For method invocations, the method name is typically the first child (identifier)
+                    let callee = node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string()).unwrap_or_else(|| "".to_string());
+
+                    // Determine caller by searching ancestors for a method/class-like node
+                    let mut caller_id = None;
+                    let mut ancestor = node.parent();
+                    while let Some(a) = ancestor {
+                        if let Some(sym_kind) = Self::node_type(a.kind()) {
+                            let name = Self::extract_name(&a, source);
+                            caller_id = Some(format!("{}:{}", file_path, name));
+                            break;
+                        }
+                        ancestor = a.parent();
+                    }
+
+                    // simple heuristic for call kind - in Java we can check if it's a constructor call or regular method
+                    let call_kind = "static"; // conservative default, could be refined
+
+                    let edge = crate::domain::types::CallEdge {
+                        id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
+                        caller_symbol_id: caller_id,
+                        callee_name: callee.clone(),
+                        callee_symbol_id: None,
+                        call_kind: call_kind.to_string(),
+                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        resolved: false,
+                    };
+                    edges.push(edge);
+                }
+
+                if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::collect_calls(cursor, source, file_path, edges);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
-            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Self::collect_calls(&mut cursor, &parsed.source, "<source>", &mut edges);
             Ok(edges)
         }
     }
