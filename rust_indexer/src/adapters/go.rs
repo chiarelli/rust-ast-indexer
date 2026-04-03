@@ -285,6 +285,14 @@ mod go_adapter {
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
             Box::new(GoAdapter::new())
         }
+
+        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<ImportEdge>> {
+            GoAdapter::extract_imports(self, parsed)
+        }
+
+        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<CallEdge>> {
+            GoAdapter::extract_calls(self, parsed)
+        }
     }
 
     pub fn register_to(registry: &crate::app::bootstrap::Registry) {

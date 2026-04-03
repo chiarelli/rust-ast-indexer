@@ -1,7 +1,9 @@
 use std::sync::mpsc::{self};
 use std::sync::Arc;
 
+use crate::adapters::LanguageAdapter;
 use crate::app::bootstrap::ApplicationContext;
+use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
@@ -26,6 +28,8 @@ fn detect_language(path: &str) -> Option<String> {
 pub struct IndexOptions {
     pub max_concurrency: usize,
     pub explicit_files: Option<Vec<String>>,
+    pub extract_imports: bool,
+    pub extract_calls: bool,
 }
 
 pub struct Indexer {
@@ -150,6 +154,27 @@ impl Indexer {
                     Some(adapter) => match adapter.parse_source(&text) {
                         Ok(parsed) => {
                             let syms = adapter.extract_symbols(&parsed).ok();
+
+                            // Extract and emit import edges
+                            if opts.extract_imports {
+                                if let Ok(imports) = adapter.extract_imports(&parsed) {
+                                    let lang_for_norm = lang.clone().unwrap_or_default();
+                                    for raw_edge in imports {
+                                        let normalized = normalize_import(&raw_edge, &lang_for_norm);
+                                        crate::infra::jsonl::write_import_event(job_id.clone(), &normalized);
+                                    }
+                                }
+                            }
+
+                            // Extract and emit call edges
+                            if opts.extract_calls {
+                                if let Ok(calls) = adapter.extract_calls(&parsed) {
+                                    for edge in calls {
+                                        crate::infra::jsonl::write_call_event(job_id.clone(), &edge);
+                                    }
+                                }
+                            }
+
                             (parsed.source.clone(), syms)
                         }
                         Err(_) => (text.clone(), None),
@@ -221,6 +246,8 @@ mod tests {
         let opts = IndexOptions {
             max_concurrency: 1,
             explicit_files: None,
+            extract_imports: false,
+            extract_calls: false,
         };
         let result = indexer
             .index_path(dir.path().to_str().unwrap(), opts)
@@ -245,6 +272,8 @@ mod tests {
         let opts = IndexOptions {
             max_concurrency: 2,
             explicit_files: None,
+            extract_imports: false,
+            extract_calls: false,
         };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)

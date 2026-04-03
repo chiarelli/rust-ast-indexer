@@ -231,6 +231,14 @@ mod rust_adapter {
             Ok(symbols)
         }
 
+        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            RustAdapter::extract_imports(self, parsed)
+        }
+
+        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+            RustAdapter::extract_calls(self, parsed)
+        }
+
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
             Box::new(RustAdapter::new())
         }
