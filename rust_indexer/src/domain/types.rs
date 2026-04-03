@@ -49,3 +49,34 @@ pub struct Chunk {
     pub symbol_id: Option<String>,
     pub chunk_kind: Option<String>,
 }
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ImportEdge {
+    pub id: String,
+    pub from_file: String,
+    pub to_module: String,
+    pub imported_symbol: Option<String>,
+    pub alias: Option<String>,
+    pub import_kind: String,
+    pub location: Location,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CallEdge {
+    pub id: String,
+    pub caller_symbol_id: Option<String>,
+    pub callee_name: String,
+    pub callee_symbol_id: Option<String>,
+    pub call_kind: String,
+    pub location: Location,
+    pub resolved: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Location {
+    pub start_line: usize,
+    pub start_col: usize,
+    pub end_line: usize,
+    pub end_col: usize,
+}

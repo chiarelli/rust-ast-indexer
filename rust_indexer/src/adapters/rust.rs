@@ -101,6 +101,53 @@ mod rust_adapter {
                 }
             }
         }
+
+        // Collect import edges by traversing the tree and matching "use_declaration" nodes
+        fn collect_imports(
+            cursor: &mut tree_sitter::TreeCursor,
+            source: &str,
+            file_path: &str,
+            edges: &mut Vec<crate::domain::types::ImportEdge>,
+        ) {
+            loop {
+                let node = cursor.node();
+                let kind = node.kind();
+
+                if kind == "use_declaration" {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let edge = crate::domain::types::ImportEdge {
+                        id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
+                        from_file: file_path.to_string(),
+                        to_module: text.trim().to_string(),
+                        imported_symbol: None,
+                        alias: None,
+                        import_kind: "named".to_string(),
+                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        resolved: false,
+                    };
+                    edges.push(edge);
+                }
+
+                if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::collect_imports(cursor, source, file_path, edges);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
     }
 
     impl LanguageAdapter for RustAdapter {

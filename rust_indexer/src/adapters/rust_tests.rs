@@ -112,6 +112,20 @@ impl std::fmt::Display for User {
     }
 
     #[test]
+    fn rust_adapter_extracts_import_edges() {
+        let adapter = RustAdapter::new();
+        let src = "use std::collections::HashMap;";
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        assert!(e.to_module.contains("std::collections") || e.to_module.contains("HashMap") || e.to_module.contains("std"));
+        assert_eq!(e.import_kind, "named");
+        assert!(!e.resolved);
+    }
+
+    #[test]
     fn rust_adapter_extracts_const() {
         let adapter = RustAdapter::new();
         let src = "const MAX_SIZE: usize = 100;";
