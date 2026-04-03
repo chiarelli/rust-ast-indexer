@@ -23,16 +23,27 @@ O foco da V1 é captura estática de arestas detectáveis por análise de AST vi
 - task: infra/persistence (exemplar)
   - atividade: chore(docs): sugerir schema SQL example (files, symbols, import_edges, call_edges) no doc/indexer_spec.md (apenas para caller)
 
-### fase-2: extração por adapters — EM ANDAMENTO
+### fase-2: extração por adapters — ✅ CONCLUÍDA
 
 - task: adapters/extend
-  - atividade: feat(adapters): adicionar extração de imports em adapters existentes (Rust, TypeScript, Java, Go)
-  - atividade: feat(adapters): detectar chamadas estáticas (function calls, method calls) quando possível
-  - atividade: test(adapters): unit tests por adapter cobrindo nested imports e chamadas (happy/unhappy)
+  - ✅ feat(adapters): adicionar extração de imports em adapters existentes (Rust, TypeScript, Java, Go)
+    - `extract_imports()` implementado e testado nos 4 adapters
+  - ✅ feat(adapters): detectar chamadas estáticas (function calls, method calls) quando possível
+    - `extract_calls()` implementado e testado nos 4 adapters
+  - ✅ test(adapters): unit tests por adapter cobrindo nested imports e chamadas (happy/unhappy)
+    - `*_extracts_import_edges` e `*_extracts_call_edges` em todos os adapters
 
 - task: domain/normalization
-  - atividade: feat(domain): normalizar import target (module path, symbol name) e gerar qualified names para símbolos
-  - atividade: test(domain): validar heurísticas de resolução (aliases, re-exports)
+  - ✅ feat(domain): normalizar import target (module path, symbol name) e gerar qualified names para símbolos
+    - `normalize_import(edge, language)` com heurísticas por linguagem:
+      - **Rust** — detecta `named`, `namespace` (glob `::*`), `reexport` (`pub use`), `resolved` para `crate::`/`self::`/`super::`
+      - **TypeScript/JS** — detecta `named`, `default`, `namespace` (`* as`), `side_effect`, `resolved` para imports relativos (`./`, `../`)
+      - **Java** — extrai package/class separadamente, inclui `import static`
+      - **Go** — resolve imports relativos (`./`, `../`)
+  - ✅ test(domain): validar heurísticas de resolução (aliases, re-exports)
+    - 17 unit tests em `normalize_import`
+    - Teste de integração adapter→normalização
+    - Teste de serialização/deserialização `ImportEdge`
 
 ### fase-3: integração no indexer pipeline — PENDENTE
 
@@ -82,11 +93,11 @@ O foco da V1 é captura estática de arestas detectáveis por análise de AST vi
 
 ## Critérios de aceitação
 
-- Modelos ImportEdge e CallEdge adicionados e testados (`cargo test` passa)
-- Eventos `import_edge` e `call_edge` documentados em `doc/protocol.md` com exemplos reais
-- Adapters Rust, TypeScript e Java extraem imports e chamadas básicas com testes unitários cobrindo cenários happy/unhappy
-- Indexer integra coleta e emite eventos JSONL incrementalmente durante `index_path` (smoke test passando)
-- Overhead medido < 10% em benchmarks definidos
+- ✅ Modelos ImportEdge e CallEdge adicionados e testados (`cargo test` passa)
+- ✅ Eventos `import_edge` e `call_edge` documentados em `doc/protocol.md` com exemplos reais
+- ✅ Adapters Rust, TypeScript, Java **e Go** extraem imports e chamadas básicas com testes unitários cobrindo cenários happy/unhappy
+- ⏭️ Indexer integra coleta e emite eventos JSONL incrementalmente durante `index_path` (smoke test passando) — **fase-3**
+- ⏭️ Overhead medido < 10% em benchmarks definidos — **fase-4**
 
 ---
 

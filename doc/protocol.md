@@ -199,3 +199,107 @@ Todos os erros devem carregar:
 
 ## Compatibilidade MCP
 O protocolo é JSONL nativo, mas foi modelado para adaptação simples a MCP stdio. A V1 não exige conformidade MCP completa; um adapter poderá traduzir comandos e eventos no futuro.
+
+## Eventos de Grafo — `import_edge` e `call_edge`
+
+### `import_edge`
+
+Emitido quando o adapter detecta um import/use/require durante o parsing.
+
+**Schema:**
+```json
+{
+  "type": "event",
+  "event": "import_edge",
+  "payload": {
+    "id": "ie:<file>:<line>:<col>",
+    "from_file": "src/lib.rs",
+    "to_module": "std::collections",
+    "imported_symbol": "HashMap",
+    "alias": null,
+    "import_kind": "named|default|namespace|side_effect|reexport",
+    "location": { "start_line": 3, "start_col": 0, "end_line": 3, "end_col": 28 },
+    "resolved": false
+  }
+}
+```
+
+**Exemplos por linguagem:**
+
+Rust — `use std::collections::HashMap as Map;`
+```json
+{ "type": "event", "event": "import_edge", "payload": {
+  "id": "ie:lib.rs:1:0", "from_file": "src/lib.rs",
+  "to_module": "std::collections::HashMap",
+  "imported_symbol": "HashMap", "alias": "Map",
+  "import_kind": "named", "location": {"start_line":1,"start_col":0,"end_line":1,"end_col":40},
+  "resolved": false
+}}
+```
+
+Rust — `pub use` (reexport)
+```json
+{ "type": "event", "event": "import_edge", "payload": {
+  "id": "ie:mod.rs:2:0", "from_file": "src/mod.rs",
+  "to_module": "internal::helper", "import_kind": "reexport",
+  "location": {"start_line":2,"start_col":0,"end_line":2,"end_col":30},
+  "resolved": false
+}}
+```
+
+TypeScript — `import { useState } from "react";`
+```json
+{ "type": "event", "event": "import_edge", "payload": {
+  "id": "ie:app.tsx:1:0", "from_file": "src/app.tsx",
+  "to_module": "react", "imported_symbol": "useState",
+  "import_kind": "named",
+  "location": {"start_line":1,"start_col":0,"end_line":1,"end_col":35},
+  "resolved": false
+}}
+```
+
+TypeScript — import relativo resolvível
+```json
+{ "type": "event", "event": "import_edge", "payload": {
+  "id": "ie:app.tsx:3:0", "from_file": "src/app.tsx",
+  "to_module": "./utils", "import_kind": "named",
+  "location": {"start_line":3,"start_col":0,"end_line":3,"end_col":30},
+  "resolved": true
+}}
+```
+
+### `call_edge`
+
+Emitido quando o adapter detecta uma chamada de função/método durante o parsing.
+
+**Schema:**
+```json
+{
+  "type": "event",
+  "event": "call_edge",
+  "payload": {
+    "id": "ce:<file>:<line>:<col>",
+    "caller_symbol_id": "sym:<file>:<caller_name>",
+    "callee_name": "Parser::parse",
+    "callee_symbol_id": null,
+    "call_kind": "static|dynamic",
+    "location": { "start_line": 120, "start_col": 8, "end_line": 120, "end_col": 20 },
+    "resolved": false
+  }
+}
+```
+
+**Exemplo:**
+```json
+{ "type": "event", "event": "call_edge", "payload": {
+  "id": "ce:lib.rs:120:8", "caller_symbol_id": "lib.rs:process",
+  "callee_name": "format", "callee_symbol_id": null,
+  "call_kind": "static",
+  "location": {"start_line":120,"start_col":8,"end_line":120,"end_col":20},
+  "resolved": false
+}}
+```
+
+**Notas:**
+- `resolved=false` na V1 — resolução de `callee_symbol_id` requer análise interprocedural futura.
+- `call_kind=dynamic` para chamadas via index access (`a[b]()`) ou import dinâmico (`import("module")`).
