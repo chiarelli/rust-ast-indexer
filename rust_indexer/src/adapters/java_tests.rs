@@ -201,6 +201,45 @@ public class Container {
     }
 
     #[test]
+    fn java_adapter_extracts_import_edges() {
+        let adapter = JavaAdapter::new();
+        let src = r#"
+import java.util.List;
+"#;
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        assert!(e.to_module.contains("import java.util.List;") || e.to_module.contains("java.util.List"));
+        assert_eq!(e.import_kind, "named");
+        assert!(!e.resolved);
+    }
+
+    #[test]
+    fn java_adapter_extracts_call_edges() {
+        let adapter = JavaAdapter::new();
+        let src = r#"
+public class Test {
+    public void process() {
+        List<String> items = fetch();
+        items.size();
+    }
+}
+"#;
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        // Should have at least 2 calls: fetch and size
+        assert!(edges.len() >= 2);
+        // Check that we have fetch call
+        let fetch_call = edges.iter().find(|e| e.callee_name == "fetch");
+        assert!(fetch_call.is_some());
+        // Check that we have size call
+        let size_call = edges.iter().find(|e| e.callee_name == "size");
+        assert!(size_call.is_some());
+    }
+
+    #[test]
     fn java_adapter_registers_to_registry() {
         let registry = crate::app::bootstrap::Registry::new();
         crate::adapters::java::register_to(&registry);
