@@ -148,6 +148,69 @@ mod rust_adapter {
             Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
             Ok(edges)
         }
+
+        // Collect call edges by traversing the tree and matching "call_expression" and "macro_invocation" nodes
+        fn collect_calls(
+            cursor: &mut tree_sitter::TreeCursor,
+            source: &str,
+            file_path: &str,
+            edges: &mut Vec<crate::domain::types::CallEdge>,
+        ) {
+            loop {
+                let node = cursor.node();
+                let kind = node.kind();
+
+                if kind == "call_expression" || kind == "macro_invocation" {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    // try to get callee as first child text, fallback to full node text
+                    let callee = node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string()).unwrap_or_else(|| node.utf8_text(source.as_bytes()).unwrap_or_default().to_string());
+
+                    // determine caller by searching ancestors for a function-like node
+                    let mut caller_id = None;
+                    let mut ancestor = node.parent();
+                    while let Some(a) = ancestor {
+                        if let Some(sym_kind) = Self::node_type(a.kind()) {
+                            let name = Self::extract_name(&a, source);
+                            caller_id = Some(format!("{}:{}", file_path, name));
+                            break;
+                        }
+                        ancestor = a.parent();
+                    }
+
+                    // simple heuristic for call kind
+                    let call_kind = if callee.contains('[') || callee.contains('{') { "dynamic" } else { "static" };
+
+                    let edge = crate::domain::types::CallEdge {
+                        id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
+                        caller_symbol_id: caller_id,
+                        callee_name: callee.to_string(),
+                        callee_symbol_id: None,
+                        call_kind: call_kind.to_string(),
+                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        resolved: false,
+                    };
+                    edges.push(edge);
+                }
+
+                if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::collect_calls(cursor, source, file_path, edges);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_calls(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
     }
 
     impl LanguageAdapter for RustAdapter {
