@@ -3,12 +3,15 @@ use crate::domain::types::Symbol;
 pub mod rust;
 pub mod typescript;
 pub mod java;
+pub mod go;
 #[cfg(all(test, feature = "parsing"))]
 mod rust_tests;
 #[cfg(all(test, feature = "parsing"))]
 mod typescript_tests;
 #[cfg(all(test, feature = "parsing"))]
 mod java_tests;
+#[cfg(all(test, feature = "parsing"))]
+mod go_tests;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {
