@@ -2,7 +2,7 @@ pub use normalize::*;
 
 #[allow(clippy::module_inception)]
 mod normalize {
-    use crate::domain::types::{NormalizedSymbol, Symbol};
+    use crate::domain::types::{ImportEdge, NormalizedSymbol, Symbol};
     use std::collections::HashMap;
 
     /// Errors that can occur during symbol normalization
@@ -96,6 +96,282 @@ mod normalize {
         });
 
         result
+    }
+
+    /// Heuristics for normalizing an import edge based on the raw import text and language.
+    /// 
+    /// The adapters produce a raw `ImportEdge` with `to_module` containing the full import
+    /// text and other fields set to defaults. This function refines those fields:
+    /// - `to_module`: extracts just the module path
+    /// - `imported_symbol`: extracts the imported symbol name when detectable
+    /// - `alias`: extracts rename/alias information
+    /// - `import_kind`: refines to `named`, `default`, `namespace`, `side_effect`, or `reexport`
+    /// - `resolved`: set to true for local-relative imports (relative paths, `crate::`)
+    pub fn normalize_import(edge: &ImportEdge, language: &str) -> ImportEdge {
+        let raw = &edge.to_module;
+
+        match language {
+            "rust" => normalize_rust_import(edge, raw),
+            "typescript" | "javascript" => normalize_ts_import(edge, raw),
+            "java" => normalize_java_import(edge, raw),
+            "go" => normalize_go_import(edge, raw),
+            _ => edge.clone(),
+        }
+    }
+
+    fn normalize_rust_import(edge: &ImportEdge, raw: &str) -> ImportEdge {
+        let trimmed = raw.trim();
+        // Detect reexports
+        let is_reexport = trimmed.starts_with("pub");
+        let import_body = if is_reexport {
+            trimmed.strip_prefix("pub ").unwrap_or(trimmed)
+        } else {
+            trimmed
+        };
+
+        // Strip "use " prefix
+        let body = import_body.strip_prefix("use ").unwrap_or(import_body).trim().trim_end_matches(';').trim();
+
+        // Detect glob: use foo::*
+        if body.ends_with("::*") {
+            let module = body.strip_suffix("::*").unwrap_or(body).trim();
+            return ImportEdge {
+                id: edge.id.clone(),
+                from_file: edge.from_file.clone(),
+                to_module: module.to_string(),
+                imported_symbol: None,
+                alias: None,
+                import_kind: "namespace".to_string(),
+                location: edge.location.clone(),
+                resolved: is_local_rust_module(raw),
+            };
+        }
+
+        // Detect alias: use foo::bar as baz
+        if let Some(idx) = body.rfind(" as ") {
+            let module_part = body[..idx].trim();
+            let alias_part = body[idx + 4..].trim();
+            return ImportEdge {
+                id: edge.id.clone(),
+                from_file: edge.from_file.clone(),
+                to_module: module_part.to_string(),
+                imported_symbol: module_part.split("::").last().map(String::from),
+                alias: Some(alias_part.to_string()),
+                import_kind: "named".to_string(),
+                location: edge.location.clone(),
+                resolved: is_local_rust_module(raw),
+            };
+        }
+
+        // Simple use - extract module path and imported symbol
+        let parts: Vec<&str> = body.split("::").collect();
+        let (module, symbol) = if parts.len() > 1 {
+            // module is everything except last segment
+            (parts[..parts.len() - 1].join("::"), Some(parts[parts.len() - 1].to_string()))
+        } else {
+            (body.to_string(), None)
+        };
+
+        ImportEdge {
+            id: edge.id.clone(),
+            from_file: edge.from_file.clone(),
+            to_module: module,
+            imported_symbol: symbol,
+            alias: None,
+            import_kind: if is_reexport {
+                "reexport".to_string()
+            } else {
+                "named".to_string()
+            },
+            location: edge.location.clone(),
+            resolved: is_local_rust_module(raw),
+        }
+    }
+
+    fn is_local_rust_module(raw: &str) -> bool {
+        raw.contains("crate::") || raw.contains("self::") || raw.contains("super::") || raw.contains("./") || raw.contains("../")
+    }
+
+    fn normalize_ts_import(edge: &ImportEdge, raw: &str) -> ImportEdge {
+        let trimmed = raw.trim();
+
+        // Detect: import "module" (side effect)
+        let bare_string = trimmed
+            .strip_prefix("import ")
+            .and_then(|s| s.strip_suffix(";"))
+            .map(|s| s.trim());
+        if let Some(content) = bare_string {
+            // Check if it's just a quoted string
+            if content.starts_with('"') && content.ends_with('"')
+                || content.starts_with('\'') && content.ends_with('\'') {
+                return ImportEdge {
+                    id: edge.id.clone(),
+                    from_file: edge.from_file.clone(),
+                    to_module: content[1..content.len() - 1].to_string(),
+                    imported_symbol: None,
+                    alias: None,
+                    import_kind: "side_effect".to_string(),
+                    location: edge.location.clone(),
+                    resolved: is_local_relative_import(content),
+                };
+            }
+
+            // Detect: import * as alias from "module"
+            if let Some(rest) = content.strip_prefix("* as ") {
+                if let Some(from_pos) = rest.find(" from ") {
+                    let alias = rest[..from_pos].trim();
+                    let module_part = extract_ts_module(&rest[from_pos + 6..]);
+                    return ImportEdge {
+                        id: edge.id.clone(),
+                        from_file: edge.from_file.clone(),
+                        to_module: module_part.clone(),
+                        imported_symbol: None,
+                        alias: Some(alias.to_string()),
+                        import_kind: "namespace".to_string(),
+                        location: edge.location.clone(),
+                        resolved: is_local_relative_import(&module_part),
+                    };
+                }
+            }
+
+            // Detect: import { symbols } from "module" or import symbols from "module"
+            if let Some(from_pos) = content.find(" from ") {
+                let before_from = content[..from_pos].trim();
+                let module_part = extract_ts_module(&content[from_pos + 6..]);
+
+                // Default import: import foo from "module"
+                if !before_from.starts_with('{') && !before_from.starts_with('*') {
+                    return ImportEdge {
+                        id: edge.id.clone(),
+                        from_file: edge.from_file.clone(),
+                        to_module: module_part.clone(),
+                        imported_symbol: Some("default".to_string()),
+                        alias: Some(before_from.to_string()),
+                        import_kind: "default".to_string(),
+                        location: edge.location.clone(),
+                        resolved: is_local_relative_import(&module_part),
+                    };
+                }
+
+                // Named import with braces: import { x, y as z } from "module"
+                if let Some(symbols) = before_from.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                    let symbols = symbols.trim();
+                    // Check for alias
+                    if let Some(idx) = symbols.rfind(" as ") {
+                        let symbol = symbols[..idx].trim().to_string();
+                        let alias = symbols[idx + 4..].trim().to_string();
+                        return ImportEdge {
+                            id: edge.id.clone(),
+                            from_file: edge.from_file.clone(),
+                            to_module: module_part.clone(),
+                            imported_symbol: Some(symbol),
+                            alias: Some(alias),
+                            import_kind: "named".to_string(),
+                            location: edge.location.clone(),
+                            resolved: is_local_relative_import(&module_part),
+                        };
+                    }
+                    // Single named import
+                    return ImportEdge {
+                        id: edge.id.clone(),
+                        from_file: edge.from_file.clone(),
+                        to_module: module_part.clone(),
+                        imported_symbol: if symbols.is_empty() { None } else { Some(symbols.to_string()) },
+                        alias: None,
+                        import_kind: "named".to_string(),
+                        location: edge.location.clone(),
+                        resolved: is_local_relative_import(&module_part),
+                    };
+                }
+            }
+        }
+
+        // Fallback: couldn't parse, keep raw
+        edge.clone()
+    }
+
+    fn extract_ts_module(s: &str) -> String {
+        let s = s.trim().trim_end_matches(';').trim();
+        if (s.starts_with('"') && s.ends_with('"')) || (s.starts_with('\'') && s.ends_with('\'')) {
+            s[1..s.len() - 1].to_string()
+        } else {
+            s.to_string()
+        }
+    }
+
+    fn is_local_relative_import(text: &str) -> bool {
+        text.starts_with("./") || text.starts_with("../")
+    }
+
+    fn normalize_java_import(edge: &ImportEdge, _raw: &str) -> ImportEdge {
+        let trimmed = edge.to_module.trim();
+        let body = trimmed.strip_prefix("import ").unwrap_or(trimmed).trim().trim_end_matches(';').trim();
+
+        // Detect static imports
+        if let Some(rest) = body.strip_prefix("static ") {
+            let last_dot = rest.rfind('.');
+            let (module, symbol) = if let Some(pos) = last_dot {
+                (rest[..pos].to_string(), Some(rest[pos + 1..].to_string()))
+            } else {
+                (rest.to_string(), None)
+            };
+            return ImportEdge {
+                id: edge.id.clone(),
+                from_file: edge.from_file.clone(),
+                to_module: module,
+                imported_symbol: symbol,
+                alias: None,
+                import_kind: "named".to_string(),
+                location: edge.location.clone(),
+                resolved: false,
+            };
+        }
+
+        // Normal java import: package.Class
+        let last_dot = body.rfind('.');
+        let (module, symbol) = if let Some(pos) = last_dot {
+            (body[..pos].to_string(), Some(body[pos + 1..].to_string()))
+        } else {
+            (body.to_string(), None)
+        };
+
+        ImportEdge {
+            id: edge.id.clone(),
+            from_file: edge.from_file.clone(),
+            to_module: module,
+            imported_symbol: symbol,
+            alias: None,
+            import_kind: "named".to_string(),
+            location: edge.location.clone(),
+            resolved: false,
+        }
+    }
+
+    fn normalize_go_import(edge: &ImportEdge, _raw: &str) -> ImportEdge {
+        let trimmed = edge.to_module.trim();
+        let body = trimmed.strip_prefix("import ").unwrap_or(trimmed).trim().trim_end_matches(';').trim();
+
+        // Strip quotes
+        let module_str = if (body.starts_with('"') && body.ends_with('"'))
+            || (body.starts_with('`') && body.ends_with('`')) {
+            &body[1..body.len() - 1]
+        } else {
+            body
+        };
+
+        // Go imports with alias: import alias "path"
+        // The adapter stores full text "import alias \"path\"" or "import \"path\""
+        // Simple heuristic: if there are two quoted segments, first is alias
+        ImportEdge {
+            id: edge.id.clone(),
+            from_file: edge.from_file.clone(),
+            to_module: module_str.to_string(),
+            imported_symbol: None,
+            alias: None,
+            import_kind: "named".to_string(),
+            location: edge.location.clone(),
+            resolved: module_str.starts_with("./") || module_str.starts_with("../"),
+        }
     }
 
     #[cfg(test)]
@@ -333,6 +609,177 @@ mod normalize {
                 let normalized = normalize_symbols(&symbols, Some("rust"));
                 let deep = normalized.iter().find(|s| s.name == "deep_fn").expect("should find deep_fn");
                 assert_eq!(deep.qualified_name, "Module::Nested::deep_fn");
+            }
+        }
+
+        mod normalize_import {
+            use super::*;
+
+            #[test]
+            fn rust_use_single() {
+                let edge = make_import_edge("use std::collections::HashMap;");
+                let norm = normalize_import(&edge, "rust");
+                assert_eq!(norm.to_module, "std::collections");
+                assert_eq!(norm.imported_symbol, Some("HashMap".to_string()));
+                assert_eq!(norm.import_kind, "named");
+                assert!(!norm.resolved);
+                assert!(norm.alias.is_none());
+            }
+
+            #[test]
+            fn rust_use_with_alias() {
+                let edge = make_import_edge("use std::collections::HashMap as Map;");
+                let norm = normalize_import(&edge, "rust");
+                assert_eq!(norm.to_module, "std::collections::HashMap");
+                assert_eq!(norm.imported_symbol, Some("HashMap".to_string()));
+                assert_eq!(norm.alias, Some("Map".to_string()));
+                assert_eq!(norm.import_kind, "named");
+                assert!(!norm.resolved);
+            }
+
+            #[test]
+            fn rust_use_glob() {
+                let edge = make_import_edge("use std::io::*;");
+                let norm = normalize_import(&edge, "rust");
+                assert_eq!(norm.to_module, "std::io");
+                assert_eq!(norm.imported_symbol, None);
+                assert_eq!(norm.import_kind, "namespace");
+                assert!(!norm.resolved);
+            }
+
+            #[test]
+            fn rust_pub_use_is_reexport() {
+                let edge = make_import_edge("pub use internal::helper;");
+                let norm = normalize_import(&edge, "rust");
+                assert_eq!(norm.to_module, "internal");
+                assert_eq!(norm.import_kind, "reexport");
+            }
+
+            #[test]
+            fn rust_crate_path_is_resolved() {
+                let edge = make_import_edge("use crate::utils::format_name;");
+                let norm = normalize_import(&edge, "rust");
+                assert_eq!(norm.to_module, "crate::utils");
+                assert_eq!(norm.imported_symbol, Some("format_name".to_string()));
+                assert!(norm.resolved);
+            }
+
+            #[test]
+            fn rust_self_path_is_resolved() {
+                let edge = make_import_edge("use self::helpers;");
+                let norm = normalize_import(&edge, "rust");
+                assert!(norm.resolved);
+            }
+
+            #[test]
+            fn ts_import_named() {
+                let edge = make_import_edge("import { useState } from \"react\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert_eq!(norm.to_module, "react");
+                assert_eq!(norm.imported_symbol, Some("useState".to_string()));
+                assert_eq!(norm.import_kind, "named");
+                assert!(!norm.resolved);
+            }
+
+            #[test]
+            fn ts_import_named_with_alias() {
+                let edge = make_import_edge("import { default as React } from \"react\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert_eq!(norm.to_module, "react");
+                assert_eq!(norm.imported_symbol, Some("default".to_string()));
+                assert_eq!(norm.alias, Some("React".to_string()));
+                assert_eq!(norm.import_kind, "named");
+            }
+
+            #[test]
+            fn ts_import_default() {
+                let edge = make_import_edge("import _ from \"lodash\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert_eq!(norm.to_module, "lodash");
+                assert_eq!(norm.imported_symbol, Some("default".to_string()));
+                assert_eq!(norm.alias, Some("_".to_string()));
+                assert_eq!(norm.import_kind, "default");
+            }
+
+            #[test]
+            fn ts_import_namespace() {
+                let edge = make_import_edge("import * as fs from \"fs\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert_eq!(norm.to_module, "fs");
+                assert_eq!(norm.alias, Some("fs".to_string()));
+                assert_eq!(norm.import_kind, "namespace");
+                assert!(norm.imported_symbol.is_none());
+            }
+
+            #[test]
+            fn ts_import_side_effect() {
+                let edge = make_import_edge("import \"core-js/promise\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert_eq!(norm.to_module, "core-js/promise");
+                assert_eq!(norm.import_kind, "side_effect");
+                assert!(norm.imported_symbol.is_none());
+                assert!(norm.alias.is_none());
+            }
+
+            #[test]
+            fn ts_relative_import_resolved() {
+                let edge = make_import_edge("import { foo } from \"./utils\";");
+                let norm = normalize_import(&edge, "typescript");
+                assert!(norm.resolved);
+            }
+
+            #[test]
+            fn java_import_class() {
+                let edge = make_import_edge("import java.util.List;");
+                let norm = normalize_import(&edge, "java");
+                assert_eq!(norm.to_module, "java.util");
+                assert_eq!(norm.imported_symbol, Some("List".to_string()));
+                assert_eq!(norm.import_kind, "named");
+                assert!(!norm.resolved);
+            }
+
+            #[test]
+            fn java_static_import() {
+                let edge = make_import_edge("import static java.util.Collections.emptyList;");
+                let norm = normalize_import(&edge, "java");
+                assert_eq!(norm.to_module, "java.util.Collections");
+                assert_eq!(norm.imported_symbol, Some("emptyList".to_string()));
+            }
+
+            #[test]
+            fn go_import() {
+                let edge = make_import_edge("import \"fmt\"");
+                let norm = normalize_import(&edge, "go");
+                assert_eq!(norm.to_module, "fmt");
+                assert_eq!(norm.import_kind, "named");
+                assert!(!norm.resolved);
+            }
+
+            #[test]
+            fn go_relative_import_resolved() {
+                let edge = make_import_edge("import \"./utils\"");
+                let norm = normalize_import(&edge, "go");
+                assert!(norm.resolved);
+            }
+
+            #[test]
+            fn unknown_language_passes_through() {
+                let edge = make_import_edge("use something;");
+                let norm = normalize_import(&edge, "ocaml");
+                assert!(norm.to_module.contains("something"));
+            }
+
+            fn make_import_edge(raw_text: &str) -> ImportEdge {
+                ImportEdge {
+                    id: "ie_test".to_string(),
+                    from_file: "src/lib.rs".to_string(),
+                    to_module: raw_text.to_string(),
+                    imported_symbol: None,
+                    alias: None,
+                    import_kind: "named".to_string(),
+                    location: crate::domain::types::Location { start_line: 1, start_col: 0, end_line: 1, end_col: 30 },
+                    resolved: false,
+                }
             }
         }
     }

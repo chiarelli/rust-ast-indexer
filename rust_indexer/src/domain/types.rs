@@ -73,7 +73,7 @@ pub struct CallEdge {
     pub resolved: bool,
 }
 
-#[derive(Debug, Serialize, Deserialize, Clone)]
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
 pub struct Location {
     pub start_line: usize,
     pub start_col: usize,
