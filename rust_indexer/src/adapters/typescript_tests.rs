@@ -155,6 +155,43 @@ class Container {
     }
 
     #[test]
+    fn ts_adapter_extracts_import_edges() {
+        let adapter = TypeScriptAdapter::new();
+        let src = r#"
+import { useState, useEffect } from "react";
+"#;
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        assert!(e.to_module.contains("import { useState, useEffect } from \"react\";"));
+        assert_eq!(e.import_kind, "named");
+        assert!(!e.resolved);
+    }
+
+    #[test]
+    fn ts_adapter_extracts_call_edges() {
+        let adapter = TypeScriptAdapter::new();
+        let src = r#"
+function process() {
+    const result = fetch("/api/data");
+    return result.json();
+}
+"#;
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        // Should have at least 2 calls: fetch and json
+        assert!(edges.len() >= 2);
+        // Check that we have fetch call
+        let fetch_call = edges.iter().find(|e| e.callee_name == "fetch");
+        assert!(fetch_call.is_some());
+        // Check that we have json call
+        let json_call = edges.iter().find(|e| e.callee_name == "json");
+        assert!(json_call.is_some());
+    }
+
+    #[test]
     fn ts_adapter_arrow_functions() {
         let adapter = TypeScriptAdapter::new();
         let src = r#"

@@ -112,6 +112,20 @@ impl std::fmt::Display for User {
     }
 
     #[test]
+    fn rust_adapter_extracts_import_edges() {
+        let adapter = RustAdapter::new();
+        let src = "use std::collections::HashMap;";
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        assert_eq!(edges.len(), 1);
+        let e = &edges[0];
+        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        assert!(e.to_module.contains("std::collections") || e.to_module.contains("HashMap") || e.to_module.contains("std"));
+        assert_eq!(e.import_kind, "named");
+        assert!(!e.resolved);
+    }
+
+    #[test]
     fn rust_adapter_extracts_const() {
         let adapter = RustAdapter::new();
         let src = "const MAX_SIZE: usize = 100;";
@@ -207,5 +221,20 @@ mod my_module {
         let src = "   \n\n  \t  ";
         let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
         assert_eq!(parsed.language, "rust");
+    }
+
+    #[test]
+    fn rust_adapter_extracts_call_edges() {
+        let adapter = RustAdapter::new();
+        let src = r#"
+fn process() {
+    let result = format!("hello {}", "world");
+    println!("{}", result);
+}
+"#;
+        let parsed = adapter.parse_source(src).expect("parse should succeed");
+        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        // Should have at least 2 calls: format! and println!
+        assert!(edges.len() >= 2, "Expected >= 2 call edges, got: {}", edges.len());
     }
 }

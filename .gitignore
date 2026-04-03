@@ -8,3 +8,4 @@ rust_indexer/target/
 *.Trash*
 .project-skills/
 .worktrees/skill/
+.devcontainer/wireguard/

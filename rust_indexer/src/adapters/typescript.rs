@@ -164,6 +164,150 @@ mod typescript_adapter {
                 }
             }
         }
+
+        // Collect import edges by traversing the tree and matching "import_declaration"/"import_statement" nodes
+        fn collect_imports(
+            cursor: &mut tree_sitter::TreeCursor,
+            source: &str,
+            file_path: &str,
+            edges: &mut Vec<crate::domain::types::ImportEdge>,
+        ) {
+            loop {
+                let node = cursor.node();
+                let kind = node.kind();
+
+                if kind == "import_declaration" || kind == "import_statement" {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let edge = crate::domain::types::ImportEdge {
+                        id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
+                        from_file: file_path.to_string(),
+                        to_module: text.trim().to_string(),
+                        imported_symbol: None,
+                        alias: None,
+                        import_kind: "named".to_string(),
+                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        resolved: false,
+                    };
+                    edges.push(edge);
+                }
+
+                if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::collect_imports(cursor, source, file_path, edges);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
+
+        // Collect call edges by traversing the tree and matching "call_expression"/"new_expression" nodes
+        fn collect_calls(
+            cursor: &mut tree_sitter::TreeCursor,
+            source: &str,
+            file_path: &str,
+            edges: &mut Vec<crate::domain::types::CallEdge>,
+        ) {
+            loop {
+                let node = cursor.node();
+                let kind = node.kind();
+
+                if kind == "call_expression" || kind == "new_expression" {
+                    let start = node.start_position();
+                    let end = node.end_position();
+                    // try to get callee text (prefer direct child), fallback to full node text
+                    let raw_callee = if kind == "call_expression" {
+                        node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
+                    } else {
+                        node.child(1).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
+                    };
+                    // derive a canonical callee name: take last identifier after '.' or '::', strip args
+                    let mut callee = raw_callee.to_string();
+                    if callee.is_empty() {
+                        callee = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
+                    }
+                    // remove leading "new " if present
+                    if callee.starts_with("new ") {
+                        callee = callee[4..].to_string();
+                    }
+                    // cut off at first '(' if present
+                    if let Some(pos) = callee.find('(') {
+                        callee = callee[..pos].to_string();
+                    }
+                    // take last path segment after '.' or ':' characters
+                    if callee.contains('.') || callee.contains(':') || callee.contains('?') {
+                        let parts: Vec<&str> = callee.split(|c: char| c == '.' || c == ':' || c == '?').collect();
+                        if let Some(last) = parts.last() {
+                            callee = last.to_string();
+                        }
+                    }
+                    callee = callee.trim().to_string();
+
+                    // Determine if this is a dynamic call (e.g., import(), optional chaining)
+                    let is_dynamic = if kind == "call_expression" {
+                        // Check if it's an import() call or has optional chaining markers
+                        let text = node.utf8_text(source.as_bytes()).unwrap_or_default();
+                        text.contains("import(") || text.contains("?.(")
+                    } else {
+                        false
+                    };
+
+                    // simple heuristic for call kind
+                    let call_kind = if is_dynamic { "dynamic" } else { "static" };
+
+                    // Determine caller by searching ancestors for a function-like node
+                    let mut caller_id = None;
+                    let mut ancestor = node.parent();
+                    while let Some(a) = ancestor {
+                        if Self::node_type(a.kind()).is_some() {
+                            let name = Self::extract_name(&a, source);
+                            caller_id = Some(format!("{}:{}", file_path, name));
+                            break;
+                        }
+                        ancestor = a.parent();
+                    }
+
+                    let edge = crate::domain::types::CallEdge {
+                        id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
+                        caller_symbol_id: caller_id,
+                        callee_name: callee.clone(),
+                        callee_symbol_id: None,
+                        call_kind: call_kind.to_string(),
+                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        resolved: false,
+                    };
+                    edges.push(edge);
+                }
+
+                if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::collect_calls(cursor, source, file_path, edges);
+                    cursor.goto_parent();
+                }
+
+                if !cursor.goto_next_sibling() {
+                    break;
+                }
+            }
+        }
+
+        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_calls(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
     }
 
     impl LanguageAdapter for TypeScriptAdapter {

@@ -1,28 +1,28 @@
 #[cfg(feature = "parsing")]
-mod java_adapter {
+mod go_adapter {
     use crate::adapters::LanguageAdapter;
     use crate::domain::parser::ParsedFile;
-    use crate::domain::types::Symbol;
+    use crate::domain::types::{CallEdge, ImportEdge, Location, Symbol};
     use anyhow::Result;
     use tree_sitter::{Parser, Tree};
 
-    fn java_language() -> tree_sitter::Language {
-        tree_sitter_java::language()
+    fn go_language() -> tree_sitter::Language {
+        tree_sitter_go::language()
     }
 
-    pub struct JavaAdapter;
+    pub struct GoAdapter;
 
-    impl Default for JavaAdapter {
+    impl Default for GoAdapter {
         fn default() -> Self { Self }
     }
 
-    impl JavaAdapter {
-        pub fn new() -> Self { JavaAdapter }
+    impl GoAdapter {
+        pub fn new() -> Self { GoAdapter }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
             parser
-                .set_language(java_language())
+                .set_language(go_language())
                 .map_err(|e| anyhow::anyhow!("set_language failed: {:?}", e))?;
             let tree = parser
                 .parse(source, None)
@@ -32,37 +32,34 @@ mod java_adapter {
 
         fn node_type(kind: &str) -> Option<&str> {
             match kind {
+                "function_declaration" => Some("function"),
                 "method_declaration" => Some("method"),
-                "class_declaration" => Some("class"),
-                "enum_declaration" => Some("enum"),
-                "interface_declaration" => Some("interface"),
-                "annotation_type_declaration" => Some("annotation"),
-                "constructor_declaration" => Some("constructor"),
+                "type_declaration" => Some("type"),
                 "import_declaration" => Some("import"),
-                "field_declaration" => Some("field"),
+                "var_declaration" => Some("var"),
+                "const_declaration" => Some("const"),
                 _ => None,
             }
         }
 
         fn extract_name(node: &tree_sitter::Node, source: &str) -> String {
+            // Go: name is often in a field or first identifier
             match node.kind() {
-                "field_declaration" => {
-                    // Field names are inside declarators
+                "var_declaration" | "const_declaration" => {
+                    // For var/const, look for identifiers
                     for i in 0..node.child_count() {
                         if let Some(child) = node.child(i) {
-                            if child.kind() == "variable_declarator" {
-                                if let Some(name_node) = child.child_by_field_name("name") {
-                                    if let Ok(text) = name_node.utf8_text(source.as_bytes()) {
-                                        return text.to_string();
-                                    }
+                            if child.kind() == "identifier" {
+                                if let Ok(text) = child.utf8_text(source.as_bytes()) {
+                                    return text.to_string();
                                 }
                             }
                         }
                     }
-                    "field".to_string()
+                    "variable".to_string()
                 }
                 _ => {
-                    // Standard: try "name" field first
+                    // Standard: try "name" field
                     if let Some(name_node) = node.child_by_field_name("name") {
                         if let Ok(text) = name_node.utf8_text(source.as_bytes()) {
                             return text.to_string();
@@ -115,7 +112,7 @@ mod java_adapter {
                             signature,
                         });
 
-                        // Update scope when descending into classes/methods
+                        // Update scope when descending into functions/methods
                         let new_scope = name.clone();
                         if cursor.goto_first_child() {
                             Self::walk_tree(
@@ -150,7 +147,7 @@ mod java_adapter {
             cursor: &mut tree_sitter::TreeCursor,
             source: &str,
             file_path: &str,
-            edges: &mut Vec<crate::domain::types::ImportEdge>,
+            edges: &mut Vec<ImportEdge>,
         ) {
             loop {
                 let node = cursor.node();
@@ -160,14 +157,14 @@ mod java_adapter {
                     let start = node.start_position();
                     let end = node.end_position();
                     let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
-                    let edge = crate::domain::types::ImportEdge {
+                    let edge = ImportEdge {
                         id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
                         from_file: file_path.to_string(),
                         to_module: text.trim().to_string(),
                         imported_symbol: None,
                         alias: None,
                         import_kind: "named".to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -184,66 +181,31 @@ mod java_adapter {
             }
         }
 
-        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
-            let (tree, _) = self.parse_tree(&parsed.source)?;
-            let mut cursor = tree.walk();
-            let mut edges = Vec::new();
-            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
-            Ok(edges)
-        }
-
-        // Collect call edges by traversing the tree and matching "method_invocation" nodes
+        // Collect call edges by traversing the tree and matching "call_expression" nodes
         fn collect_calls(
             cursor: &mut tree_sitter::TreeCursor,
             source: &str,
             file_path: &str,
-            edges: &mut Vec<crate::domain::types::CallEdge>,
+            edges: &mut Vec<CallEdge>,
         ) {
             loop {
                 let node = cursor.node();
                 let kind = node.kind();
 
-                if kind == "method_invocation" {
+                if kind == "call_expression" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    // For method invocations, extract full node text and derive the last identifier before '('
-                    let full_text = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
-                    let before_paren = if let Some(pos) = full_text.find('(') { full_text[..pos].to_string() } else { full_text.clone() };
-                    // find last identifier run (letters, digits, underscore)
-                    let mut callee = String::new();
-                    if !before_paren.is_empty() {
-                        let bytes = before_paren.as_bytes();
-                        let mut i = bytes.len();
-                        while i > 0 {
-                            i -= 1;
-                            let ch = bytes[i] as char;
-                            if ch.is_ascii_alphanumeric() || ch == '_' {
-                                // find start of run
-                                let mut start = i;
-                                while start > 0 {
-                                    let pc = bytes[start - 1] as char;
-                                    if pc.is_ascii_alphanumeric() || pc == '_' { start -= 1 } else { break; }
-                                }
-                                if start <= i {
-                                    callee = before_paren[start..=i].to_string();
-                                }
-                                break;
-                            }
-                        }
-                    }
-                    if callee.is_empty() {
-                        // fallback: last path segment after '.' or ':'
-                        if before_paren.contains('.') || before_paren.contains(':') {
-                            if let Some(last) = before_paren.split(|c: char| c=='.' || c==':').last() {
-                                callee = last.trim().to_string();
-                            }
-                        } else {
-                            callee = before_paren.trim().to_string();
-                        }
-                    }
-                    callee = callee.trim().to_string();
+                    // For call expressions, the function being called can be complex (selector, etc.)
+                    // We'll extract the function name from the function position
+                    let callee = if let Some(func_node) = node.child(0) {
+                        // Try to get the function name text
+                        func_node.utf8_text(source.as_bytes()).unwrap_or_default().to_string()
+                    } else {
+                        // Fallback to full node text
+                        node.utf8_text(source.as_bytes()).unwrap_or_default().to_string()
+                    };
 
-                    // Determine caller by searching ancestors for a method/class-like node
+                    // Determine caller by searching ancestors for a function-like node
                     let mut caller_id = None;
                     let mut ancestor = node.parent();
                     while let Some(a) = ancestor {
@@ -255,16 +217,20 @@ mod java_adapter {
                         ancestor = a.parent();
                     }
 
-                    // simple heuristic for call kind - in Java we can check if it's a constructor call or regular method
-                    let call_kind = "static"; // conservative default, could be refined
+                    // Simple heuristic for call kind - in Go we can check for complex expressions
+                    let call_kind = if callee.contains('[') || callee.contains('&') || callee.contains('*') {
+                        "dynamic"
+                    } else {
+                        "static"
+                    };
 
-                    let edge = crate::domain::types::CallEdge {
+                    let edge = CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
                         caller_symbol_id: caller_id,
-                        callee_name: callee.clone(),
+                        callee_name: callee,
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -281,7 +247,15 @@ mod java_adapter {
             }
         }
 
-        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        pub fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<ImportEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
+
+        pub fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<CallEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -290,11 +264,11 @@ mod java_adapter {
         }
     }
 
-    impl LanguageAdapter for JavaAdapter {
+    impl LanguageAdapter for GoAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
             let (_, source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
-                language: "java".to_string(),
+                language: "go".to_string(),
                 source_len: source_str.len(),
                 source: source_str,
             })
@@ -309,18 +283,18 @@ mod java_adapter {
         }
 
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
-            Box::new(JavaAdapter::new())
+            Box::new(GoAdapter::new())
         }
     }
 
     pub fn register_to(registry: &crate::app::bootstrap::Registry) {
-        crate::register_language_adapter!(registry, "java", JavaAdapter::new());
+        crate::register_language_adapter!(registry, "go", GoAdapter::new());
     }
 }
 
 #[cfg(not(feature = "parsing"))]
-mod java_adapter {
+mod go_adapter {
     // stub implementation when parsing feature not enabled
 }
 
-pub use java_adapter::*;
+pub use go_adapter::*;
