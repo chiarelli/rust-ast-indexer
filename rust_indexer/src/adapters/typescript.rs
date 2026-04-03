@@ -204,6 +204,14 @@ mod typescript_adapter {
             }
         }
 
+        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
+
         // Collect call edges by traversing the tree and matching "call_expression"/"new_expression" nodes
         fn collect_calls(
             cursor: &mut tree_sitter::TreeCursor,
@@ -218,23 +226,33 @@ mod typescript_adapter {
                 if kind == "call_expression" || kind == "new_expression" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    // try to get callee as function/new target text, fallback to full node text
-                    let callee = if kind == "call_expression" {
-                        // For call expressions, the function being called is typically the first child
-                        node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string())
+                    // try to get callee text (prefer direct child), fallback to full node text
+                    let raw_callee = if kind == "call_expression" {
+                        node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
                     } else {
-                        // For new expressions, the constructor is typically the first child after 'new'
-                        node.child(1).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string())
-                    }.unwrap_or_else(|| {
-                        // Fallback to a reasonable representation
-                        let text = node.utf8_text(source.as_bytes()).unwrap_or_default();
-                        if text.starts_with("new ") {
-                            // Try to extract constructor name
-                            text[4..].split_whitespace().next().unwrap_or("").to_string()
-                        } else {
-                            text.to_string()
+                        node.child(1).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
+                    };
+                    // derive a canonical callee name: take last identifier after '.' or '::', strip args
+                    let mut callee = raw_callee.to_string();
+                    if callee.is_empty() {
+                        callee = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
+                    }
+                    // remove leading "new " if present
+                    if callee.starts_with("new ") {
+                        callee = callee[4..].to_string();
+                    }
+                    // cut off at first '(' if present
+                    if let Some(pos) = callee.find('(') {
+                        callee = callee[..pos].to_string();
+                    }
+                    // take last path segment after '.' or ':' characters
+                    if callee.contains('.') || callee.contains(':') || callee.contains('?') {
+                        let parts: Vec<&str> = callee.split(|c: char| c == '.' || c == ':' || c == '?').collect();
+                        if let Some(last) = parts.last() {
+                            callee = last.to_string();
                         }
-                    });
+                    }
+                    callee = callee.trim().to_string();
 
                     // Determine if this is a dynamic call (e.g., import(), optional chaining)
                     let is_dynamic = if kind == "call_expression" {

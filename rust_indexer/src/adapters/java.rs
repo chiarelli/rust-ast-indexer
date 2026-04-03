@@ -184,6 +184,14 @@ mod java_adapter {
             }
         }
 
+        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            let (tree, _) = self.parse_tree(&parsed.source)?;
+            let mut cursor = tree.walk();
+            let mut edges = Vec::new();
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Ok(edges)
+        }
+
         // Collect call edges by traversing the tree and matching "method_invocation" nodes
         fn collect_calls(
             cursor: &mut tree_sitter::TreeCursor,
@@ -198,8 +206,42 @@ mod java_adapter {
                 if kind == "method_invocation" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    // For method invocations, the method name is typically the first child (identifier)
-                    let callee = node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string()).unwrap_or_else(|| "".to_string());
+                    // For method invocations, extract full node text and derive the last identifier before '('
+                    let full_text = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
+                    let before_paren = if let Some(pos) = full_text.find('(') { full_text[..pos].to_string() } else { full_text.clone() };
+                    // find last identifier run (letters, digits, underscore)
+                    let mut callee = String::new();
+                    if !before_paren.is_empty() {
+                        let bytes = before_paren.as_bytes();
+                        let mut i = bytes.len();
+                        while i > 0 {
+                            i -= 1;
+                            let ch = bytes[i] as char;
+                            if ch.is_ascii_alphanumeric() || ch == '_' {
+                                // find start of run
+                                let mut start = i;
+                                while start > 0 {
+                                    let pc = bytes[start - 1] as char;
+                                    if pc.is_ascii_alphanumeric() || pc == '_' { start -= 1 } else { break; }
+                                }
+                                if start <= i {
+                                    callee = before_paren[start..=i].to_string();
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    if callee.is_empty() {
+                        // fallback: last path segment after '.' or ':'
+                        if before_paren.contains('.') || before_paren.contains(':') {
+                            if let Some(last) = before_paren.split(|c: char| c=='.' || c==':').last() {
+                                callee = last.trim().to_string();
+                            }
+                        } else {
+                            callee = before_paren.trim().to_string();
+                        }
+                    }
+                    callee = callee.trim().to_string();
 
                     // Determine caller by searching ancestors for a method/class-like node
                     let mut caller_id = None;
