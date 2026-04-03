@@ -209,7 +209,7 @@ mod go_adapter {
                     let mut caller_id = None;
                     let mut ancestor = node.parent();
                     while let Some(a) = ancestor {
-                        if let Some(sym_kind) = Self::node_type(a.kind()) {
+                        if Self::node_type(a.kind()).is_some() {
                             let name = Self::extract_name(&a, source);
                             caller_id = Some(format!("{}:{}", file_path, name));
                             break;
