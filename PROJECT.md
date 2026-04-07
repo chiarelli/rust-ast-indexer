@@ -28,18 +28,8 @@ tests/
 ```
 
 ## Current Status
-- **Branch**: `feature/import-call-graph/pipeline-integration` (current)
-- **Progress**: Phase-3 integration COMPLETE
-  - Import/call edge extraction integrated into indexer pipeline
-  - All 4 language adapters updated with extract_imports/extract_calls methods
-  - IndexOptions now includes extract_imports/extract_calls booleans
-  - JSONL event emission helpers added (write_import_event, write_call_event)
-  - CLI handler switched to use index_path_parallel for edge extraction
-  - Smoke test validates import_edge and call_edge events in stdout
-- **Tests**: 186 passing (156 unit + 30 integration/smoke), 0 compiler warnings
-- **Pending**: 
-  - Backpressure-and-streaming subtask (max_queue_size, pause/resume events)
-  - Phase-4 benchmarks & CI (100-1000 file benchmarks, CI smoke test)
+- **Next Feature Ready**: 
+  - `feature/chunking-heuristics` – see `/workspace/doc/features/feature_chunking-heuristics.md`
 
 ## Main Commands for AI Agents
 
