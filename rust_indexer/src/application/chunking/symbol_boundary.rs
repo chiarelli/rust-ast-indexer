@@ -79,3 +79,80 @@ fn sourcelines_to_string(source: &str, start: usize, end: usize) -> String {
     }
     out
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::domain::types::Symbol;
+    use crate::application::chunking::ChunkStrategy;
+
+    #[test]
+    fn symbol_boundary_chunks_symbols() {
+        let source = "use std::fmt;\n\nfn a() {\n    println!(\"a\");\n}\n\nfn b() {\n    println!(\"b\");\n}\n";
+
+        let sym_a = Symbol {
+            id: "sym::a".into(),
+            name: "a".into(),
+            kind: "function".into(),
+            scope: None,
+            file_path: "src/lib.rs".into(),
+            start_line: 3,
+            end_line: 5,
+            signature: None,
+        };
+
+        let sym_b = Symbol {
+            id: "sym::b".into(),
+            name: "b".into(),
+            kind: "function".into(),
+            scope: None,
+            file_path: "src/lib.rs".into(),
+            start_line: 7,
+            end_line: 9,
+            signature: None,
+        };
+
+        let chunker = SymbolBoundaryChunker::new(0);
+        let chunks = chunker.chunk_file("src/lib.rs", source, Some(&vec![sym_a.clone(), sym_b.clone()]));
+        assert_eq!(chunks.len(), 2);
+        let a_chunk = &chunks[0];
+        assert_eq!(a_chunk.symbol_id.as_deref(), Some("sym::a"));
+        assert!(a_chunk.text.contains("println!(\"a\")"));
+
+        let b_chunk = &chunks[1];
+        assert_eq!(b_chunk.symbol_id.as_deref(), Some("sym::b"));
+        assert!(b_chunk.text.contains("println!(\"b\")"));
+    }
+
+    #[test]
+    fn symbol_boundary_fallback_no_symbols() {
+        let source = "fn main() { }\n";
+        let chunker = SymbolBoundaryChunker::new(0);
+        let chunks = chunker.chunk_file("src/lib.rs", source, None);
+        assert_eq!(chunks.len(), 1);
+        let c = &chunks[0];
+        assert_eq!(c.chunk_kind.as_deref(), Some("FullFile"));
+        assert!(c.content.contains("fn main"));
+    }
+
+    #[test]
+    fn symbol_boundary_respects_max_lines() {
+        let source = "fn long() {\n    line1;\n    line2;\n}\n";
+        let sym = Symbol {
+            id: "sym::long".into(),
+            name: "long".into(),
+            kind: "function".into(),
+            scope: None,
+            file_path: "src/lib.rs".into(),
+            start_line: 1,
+            end_line: 4,
+            signature: None,
+        };
+
+        // max_lines = 1 should drop the oversized chunk
+        let chunker = SymbolBoundaryChunker::new(1);
+        let chunks = chunker.chunk_file("src/lib.rs", source, Some(&vec![sym]));
+        assert!(chunks.is_empty());
+    }
+}
+
