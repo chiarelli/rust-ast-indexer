@@ -13,6 +13,8 @@ num_cpus = "1.16"
 walkdir = "2.3"
 globset = "0.4"
 dashmap = "5.4"
+md5 = "0.7"
+
 
 # Tree-sitter for parsing (optional languages)
 tree-sitter = "0.20"

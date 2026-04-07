@@ -1,3 +1,4 @@
+pub mod chunk_tests;
 pub mod normalize;
 pub mod parser;
 pub mod types;

@@ -82,11 +82,14 @@ impl Indexer {
                 file_path: file.path.clone(),
                 start_line: 1,
                 end_line: 1,
+                content: String::new(),
                 text: String::new(),
                 md5: file.hash.clone(),
                 size: file.size as usize,
                 language: file.language.clone(),
                 symbol_id: None,
+                symbol_ids: vec![],
+                metadata: None,
                 chunk_kind: Some("FullFile".into()),
             };
 
@@ -196,12 +199,15 @@ impl Indexer {
                     file_path: file.path.clone(),
                     start_line: 1,
                     end_line: 1,
-                    text: first_line,
+                    content: first_line.clone(),
+                    text: first_line.clone(),
                     md5: file.hash.clone(),
                     size: file.size as usize,
                     language: file.language.clone().or(lang),
                     symbol_id: syms.as_ref().and_then(|s| s.first().map(|s| s.id.clone())),
+                    symbol_ids: syms.as_ref().map(|s| s.iter().map(|sym| sym.id.clone()).collect()).unwrap_or_default(),
                     chunk_kind: Some("FullFile".into()),
+                    metadata: None,
                 };
 
                 // If no adapter for this language, still emit chunk
@@ -212,7 +218,7 @@ impl Indexer {
                 // Send chunk to collector
                 let _ = s.send((chunk.clone(), file.clone()));
                 // Emit chunk_emitted event for caller
-                let payload = crate::application::protocol::ChunkEventPayload::from(chunk);
+                let payload = crate::application::protocol::ChunkEventPayload::from(chunk.clone());
                 crate::infra::jsonl::write_chunk_event(job_id.clone(), &payload);
             });
 
