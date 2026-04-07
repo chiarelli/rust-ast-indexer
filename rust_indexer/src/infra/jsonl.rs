@@ -1,4 +1,5 @@
 use crate::application::protocol::{Command, Event, ChunkEventPayload};
+use crate::domain::types::{CallEdge, ImportEdge};
 
 pub fn write_event(e: &Event) {
     let s = serde_json::to_string(e).unwrap_or_else(|_| "{}".into());
@@ -17,6 +18,36 @@ pub fn build_chunk_event(job_id: Option<String>, payload: &ChunkEventPayload) ->
 
 pub fn write_chunk_event(job_id: Option<String>, payload: &ChunkEventPayload) {
     let ev = build_chunk_event(job_id, payload);
+    write_event(&ev);
+}
+
+pub fn build_import_event(job_id: Option<String>, payload: &ImportEdge) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "import_edge".into(),
+        job_id,
+        payload: Some(serde_json::to_value(payload).unwrap_or(serde_json::Value::Null)),
+    }
+}
+
+pub fn write_import_event(job_id: Option<String>, payload: &ImportEdge) {
+    let ev = build_import_event(job_id, payload);
+    write_event(&ev);
+}
+
+pub fn build_call_event(job_id: Option<String>, payload: &CallEdge) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "call_edge".into(),
+        job_id,
+        payload: Some(serde_json::to_value(payload).unwrap_or(serde_json::Value::Null)),
+    }
+}
+
+pub fn write_call_event(job_id: Option<String>, payload: &CallEdge) {
+    let ev = build_call_event(job_id, payload);
     write_event(&ev);
 }
 

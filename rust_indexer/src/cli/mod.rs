@@ -137,6 +137,16 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .map(|v| v as usize)
                     .unwrap_or(ctx.config.max_concurrency),
                 explicit_files: None,
+                extract_imports: payload
+                    .get("options")
+                    .and_then(|o| o.get("extract_imports"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
+                extract_calls: payload
+                    .get("options")
+                    .and_then(|o| o.get("extract_calls"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
             };
 
             thread::spawn(move || {
@@ -154,7 +164,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
 
                 let indexer = Indexer::from_context(ctx.clone());
-                let result = indexer.index_path(&path, opts);
+                let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
                 match result {
                     Ok(result) => {
                         for chunk in &result.chunks {
@@ -380,6 +390,16 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .map(|v| v as usize)
                     .unwrap_or(ctx.config.max_concurrency),
                 explicit_files,
+                extract_imports: payload
+                    .get("options")
+                    .and_then(|o| o.get("extract_imports"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
+                extract_calls: payload
+                    .get("options")
+                    .and_then(|o| o.get("extract_calls"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(true),
             };
 
             thread::spawn(move || {

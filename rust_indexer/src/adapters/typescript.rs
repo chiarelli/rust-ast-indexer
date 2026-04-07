@@ -328,6 +328,14 @@ mod typescript_adapter {
             Ok(symbols)
         }
 
+        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            TypeScriptAdapter::extract_imports(self, parsed)
+        }
+
+        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+            TypeScriptAdapter::extract_calls(self, parsed)
+        }
+
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
             Box::new(TypeScriptAdapter::new())
         }

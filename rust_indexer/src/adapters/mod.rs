@@ -1,5 +1,5 @@
 use crate::domain::parser::ParsedFile;
-use crate::domain::types::Symbol;
+use crate::domain::types::{CallEdge, ImportEdge, Symbol};
 pub mod rust;
 pub mod typescript;
 pub mod java;
@@ -18,6 +18,16 @@ pub trait LanguageAdapter: Send + Sync + 'static {
     fn parse_source(&self, source: &str) -> Result<ParsedFile>;
     fn extract_symbols(&self, parsed: &ParsedFile) -> Result<Vec<Symbol>>;
     fn box_clone(&self) -> Box<dyn LanguageAdapter>;
+
+    /// Extract import edges from a parsed file. Default: returns empty vec.
+    fn extract_imports(&self, _parsed: &ParsedFile) -> Result<Vec<ImportEdge>> {
+        Ok(Vec::new())
+    }
+
+    /// Extract call edges from a parsed file. Default: returns empty vec.
+    fn extract_calls(&self, _parsed: &ParsedFile) -> Result<Vec<CallEdge>> {
+        Ok(Vec::new())
+    }
 }
 
 // Adapter registry (compat shim)

@@ -308,6 +308,14 @@ mod java_adapter {
             Ok(symbols)
         }
 
+        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+            JavaAdapter::extract_imports(self, parsed)
+        }
+
+        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+            JavaAdapter::extract_calls(self, parsed)
+        }
+
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
             Box::new(JavaAdapter::new())
         }
