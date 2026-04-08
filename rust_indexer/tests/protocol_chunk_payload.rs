@@ -8,12 +8,15 @@ fn build_and_serialize_chunk_payload_matches_expected() {
         file_path: "src/main.rs".into(),
         start_line: 2,
         end_line: 4,
+        content: "fn foo() {}\nfn bar() {}".into(),
         text: "fn foo() {}\nfn bar() {}".into(),
         md5: "def456".into(),
         size: 34,
         language: Some("rust".into()),
         symbol_id: None,
+        symbol_ids: vec![],
         chunk_kind: Some("Symbol".into()),
+        metadata: None,
     };
 
     let payload: ChunkEventPayload = domain.into();
