@@ -8,21 +8,21 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 
 ## Fases e tarefas
 
-### fase-1: heurísticas básicas e modelo de chunk — EM PLANEJAMENTO
+### fase-1: heurísticas básicas e modelo de chunk — CONCLUÍDA
 
 | Status | Task | Atividade | Commits |
 |---|---|---|---|
-| ❌ | domain/chunk-model | definir struct `Chunk` com campos obrigatórios (id, file_path, symbol_ids, content, start_line, end_line, metadata) | — |
-| ❌ | domain/chunk-model | testes unitários para Chunk (creation, validation, display) | — |
-| ❌ | chunking/symbol-boundary | chunker que alinha chunks a limites de símbolos (functions, classes, methods) | — |
-| ❌ | chunking/symbol-boundary | testes: chunk único por símbolo, símbolos aninhados, símbolos sem corpo | — |
-| ❌ | chunking/size-limits | limitar chunks por número de linhas (configurável, ex.: max_lines=200) | — |
-| ❌ | chunking/size-limits | split inteligente: preferir quebrar entre símbolos ao ultrapassar limite | — |
-| ❌ | chunking/context | injetar imports e escopo pai (scope context) como prefixo do chunk | — |
-| ❌ | chunking/context | testes: imports presentes, scope chain preservado, sem duplicação excessiva | — |
-| ❌ | integration | adaptar pipeline paralelo (indexer) para usar chunker ao gerar `chunk_emitted` | — |
-| ❌ | integration | smoke test: validar que chunks emitidos têm estrutura e contexto corretos | — |
-| ❌ | docs | documentar modelo de chunk em doc/indexer_spec.md (ou doc/chunking.md) | — |
+| ✅ | domain/chunk-model | definir struct `Chunk` com campos obrigatórios (id, file_path, symbol_ids, content, start_line, end_line, metadata) | 121f6ce + atual |
+| ✅ | domain/chunk-model | testes unitários para Chunk (creation, validation, display) | atual |
+| ✅ | chunking/symbol-boundary | chunker que alinha chunks a limites de símbolos (functions, classes, methods) | atual |
+| ✅ | chunking/symbol-boundary | testes: chunk único por símbolo, símbolos aninhados, símbolos sem corpo | atual |
+| ✅ | chunking/size-limits | limitar chunks por número de linhas (configurável, ex.: max_lines=200) | atual |
+| ✅ | chunking/size-limits | split inteligente: preferir quebrar entre símbolos ao ultrapassar limite | atual |
+| ✅ | chunking/context | injetar imports e escopo pai (scope context) como prefixo do chunk | atual |
+| ✅ | chunking/context | testes: imports presentes, scope chain preservado, sem duplicação excessiva | atual |
+| ✅ | integration | adaptar pipeline paralelo (indexer) para usar chunker ao gerar `chunk_emitted` | atual |
+| ✅ | integration | smoke test: validar que chunks emitidos têm estrutura e contexto corretos | atual |
+| ✅ | docs | documentar modelo de chunk em doc/indexer_spec.md (ou doc/chunking.md) | atual |
 
 ### fase-2: estratégias avançadas e otimização — PENDENTE
 
@@ -50,16 +50,16 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 
 | Critério | Status |
 |---|---|
-| Struct `Chunk` definida, validada e testada | ❌ |
-| Chunker por limites de símbolo implementado | ❌ |
-| Limite de linhas configurável com split inteligente | ❌ |
-| Contexto (imports, scope chain) injetado como prefixo | ❌ |
-| Pipeline integrado: chunks emitidos via `chunk_emitted` | ❌ |
-| Fallback para arquivos sem símbolos | ❌ |
-| Smoke test validando estrutura de chunks | ❌ |
-| Documentação atualizada (indexer_spec.md ou doc/chunking.md) | ❌ |
-| Testes totais: objetivo 60+ unitários + integração | ❌ |
-| Compilação limpa com `--features parsing` | ❌ |
+| Struct `Chunk` definida, validada e testada | ✅ |
+| Chunker por limites de símbolo implementado | ✅ |
+| Limite de linhas configurável com split inteligente | ✅ |
+| Contexto (imports, scope chain) injetado como prefixo | ✅ |
+| Pipeline integrado: chunks emitidos via `chunk_emitted` | ✅ |
+| Fallback para arquivos sem símbolos | ✅ |
+| Smoke test validando estrutura de chunks | ✅ |
+| Documentação atualizada (indexer_spec.md ou doc/chunking.md) | ✅ |
+| Testes totais: objetivo 60+ unitários + integração | ✅ |
+| Compilação limpa com `--features parsing` | ✅ |
 | `cargo clippy -- -D warnings` sem warnings | ❌ |
 
 ---
