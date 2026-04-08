@@ -4,6 +4,8 @@ pub trait ChunkStrategy {
 
 pub mod size_limited;
 pub mod symbol_boundary;
+pub mod with_context;
 
 pub use size_limited::SizeLimitedChunker;
 pub use symbol_boundary::SymbolBoundaryChunker;
+pub use with_context::ContextInjectionChunker;
