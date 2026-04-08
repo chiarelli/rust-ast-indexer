@@ -13,11 +13,15 @@ mod rust_adapter {
     pub struct RustAdapter;
 
     impl Default for RustAdapter {
-        fn default() -> Self { Self }
+        fn default() -> Self {
+            Self
+        }
     }
 
     impl RustAdapter {
-        pub fn new() -> Self { RustAdapter }
+        pub fn new() -> Self {
+            RustAdapter
+        }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
@@ -67,8 +71,10 @@ mod rust_adapter {
                     let name = Self::extract_name(&node, source);
                     let start_line = node.start_position().row;
                     let end_line = node.end_position().row;
-                    let signature =
-                        node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string());
+                    let signature = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string());
                     let id = format!("{}:{}", file_path, name);
 
                     symbols.push(Symbol {
@@ -86,13 +92,7 @@ mod rust_adapter {
                 let has_children = node.child_count() > 0;
                 let should_descend = has_children;
                 if should_descend && cursor.goto_first_child() {
-                    Self::walk_tree(
-                        cursor,
-                        source,
-                        file_path,
-                        scope,
-                        symbols,
-                    );
+                    Self::walk_tree(cursor, source, file_path, scope, symbols);
                     cursor.goto_parent();
                 }
 
@@ -116,7 +116,11 @@ mod rust_adapter {
                 if kind == "use_declaration" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let text = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     let edge = crate::domain::types::ImportEdge {
                         id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
                         from_file: file_path.to_string(),
@@ -124,7 +128,12 @@ mod rust_adapter {
                         imported_symbol: None,
                         alias: None,
                         import_kind: "named".to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -141,7 +150,10 @@ mod rust_adapter {
             }
         }
 
-        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        pub fn extract_imports(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -164,7 +176,15 @@ mod rust_adapter {
                     let start = node.start_position();
                     let end = node.end_position();
                     // try to get callee as first child text, fallback to full node text
-                    let callee = node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).map(|s| s.to_string()).unwrap_or_else(|| node.utf8_text(source.as_bytes()).unwrap_or_default().to_string());
+                    let callee = node
+                        .child(0)
+                        .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_else(|| {
+                            node.utf8_text(source.as_bytes())
+                                .unwrap_or_default()
+                                .to_string()
+                        });
 
                     // determine caller by searching ancestors for a function-like node
                     let mut caller_id = None;
@@ -179,7 +199,11 @@ mod rust_adapter {
                     }
 
                     // simple heuristic for call kind
-                    let call_kind = if callee.contains('[') || callee.contains('{') { "dynamic" } else { "static" };
+                    let call_kind = if callee.contains('[') || callee.contains('{') {
+                        "dynamic"
+                    } else {
+                        "static"
+                    };
 
                     let edge = crate::domain::types::CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
@@ -187,7 +211,12 @@ mod rust_adapter {
                         callee_name: callee.to_string(),
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -204,7 +233,10 @@ mod rust_adapter {
             }
         }
 
-        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        pub fn extract_calls(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -231,11 +263,17 @@ mod rust_adapter {
             Ok(symbols)
         }
 
-        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        fn extract_imports(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             RustAdapter::extract_imports(self, parsed)
         }
 
-        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        fn extract_calls(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             RustAdapter::extract_calls(self, parsed)
         }
 
@@ -255,4 +293,5 @@ mod rust_adapter {
     // stub implementation when parsing feature not enabled
 }
 
+#[cfg(feature = "parsing")]
 pub use rust_adapter::*;

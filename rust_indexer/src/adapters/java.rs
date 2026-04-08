@@ -13,11 +13,15 @@ mod java_adapter {
     pub struct JavaAdapter;
 
     impl Default for JavaAdapter {
-        fn default() -> Self { Self }
+        fn default() -> Self {
+            Self
+        }
     }
 
     impl JavaAdapter {
-        pub fn new() -> Self { JavaAdapter }
+        pub fn new() -> Self {
+            JavaAdapter
+        }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
@@ -100,8 +104,10 @@ mod java_adapter {
                         let name = Self::extract_name(&node, source);
                         let start_line = node.start_position().row;
                         let end_line = node.end_position().row;
-                        let signature =
-                            node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string());
+                        let signature = node
+                            .utf8_text(source.as_bytes())
+                            .ok()
+                            .map(|s| s.to_string());
                         let id = format!("{}:{}", file_path, name);
 
                         symbols.push(Symbol {
@@ -118,23 +124,11 @@ mod java_adapter {
                         // Update scope when descending into classes/methods
                         let new_scope = name.clone();
                         if cursor.goto_first_child() {
-                            Self::walk_tree(
-                                cursor,
-                                source,
-                                file_path,
-                                Some(&new_scope),
-                                symbols,
-                            );
+                            Self::walk_tree(cursor, source, file_path, Some(&new_scope), symbols);
                             cursor.goto_parent();
                         }
                     } else if node.child_count() > 0 && cursor.goto_first_child() {
-                        Self::walk_tree(
-                            cursor,
-                            source,
-                            file_path,
-                            scope,
-                            symbols,
-                        );
+                        Self::walk_tree(cursor, source, file_path, scope, symbols);
                         cursor.goto_parent();
                     }
                 }
@@ -159,7 +153,11 @@ mod java_adapter {
                 if kind == "import_declaration" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let text = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     let edge = crate::domain::types::ImportEdge {
                         id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
                         from_file: file_path.to_string(),
@@ -167,7 +165,12 @@ mod java_adapter {
                         imported_symbol: None,
                         alias: None,
                         import_kind: "named".to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -184,7 +187,10 @@ mod java_adapter {
             }
         }
 
-        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        pub fn extract_imports(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -207,8 +213,15 @@ mod java_adapter {
                     let start = node.start_position();
                     let end = node.end_position();
                     // For method invocations, extract full node text and derive the last identifier before '('
-                    let full_text = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
-                    let before_paren = if let Some(pos) = full_text.find('(') { full_text[..pos].to_string() } else { full_text.clone() };
+                    let full_text = node
+                        .utf8_text(source.as_bytes())
+                        .unwrap_or_default()
+                        .to_string();
+                    let before_paren = if let Some(pos) = full_text.find('(') {
+                        full_text[..pos].to_string()
+                    } else {
+                        full_text.clone()
+                    };
                     // find last identifier run (letters, digits, underscore)
                     let mut callee = String::new();
                     if !before_paren.is_empty() {
@@ -222,7 +235,11 @@ mod java_adapter {
                                 let mut start = i;
                                 while start > 0 {
                                     let pc = bytes[start - 1] as char;
-                                    if pc.is_ascii_alphanumeric() || pc == '_' { start -= 1 } else { break; }
+                                    if pc.is_ascii_alphanumeric() || pc == '_' {
+                                        start -= 1
+                                    } else {
+                                        break;
+                                    }
                                 }
                                 if start <= i {
                                     callee = before_paren[start..=i].to_string();
@@ -234,7 +251,7 @@ mod java_adapter {
                     if callee.is_empty() {
                         // fallback: last path segment after '.' or ':'
                         if before_paren.contains('.') || before_paren.contains(':') {
-                            if let Some(last) = before_paren.split(|c: char| c=='.' || c==':').last() {
+                            if let Some(last) = before_paren.split(['.', ':']).next_back() {
                                 callee = last.trim().to_string();
                             }
                         } else {
@@ -264,7 +281,12 @@ mod java_adapter {
                         callee_name: callee.clone(),
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -281,7 +303,10 @@ mod java_adapter {
             }
         }
 
-        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        pub fn extract_calls(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -308,11 +333,17 @@ mod java_adapter {
             Ok(symbols)
         }
 
-        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        fn extract_imports(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             JavaAdapter::extract_imports(self, parsed)
         }
 
-        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        fn extract_calls(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             JavaAdapter::extract_calls(self, parsed)
         }
 
@@ -331,4 +362,5 @@ mod java_adapter {
     // stub implementation when parsing feature not enabled
 }
 
+#[cfg(feature = "parsing")]
 pub use java_adapter::*;

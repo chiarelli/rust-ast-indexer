@@ -17,7 +17,7 @@ impl crate::application::chunking::ChunkStrategy for SymbolBoundaryChunker {
         if symbols.is_none() || symbols.as_ref().unwrap().is_empty() {
             let text = source.to_string();
             return vec![Chunk {
-                id: format!("chk-{}", format!("{:x}", md5::compute(&text))),
+                id: format!("chk-{:x}", md5::compute(&text)),
                 file_path: file_path.to_string(),
                 start_line: 1,
                 end_line: source.lines().count().max(1),

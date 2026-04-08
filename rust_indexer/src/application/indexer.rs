@@ -212,8 +212,8 @@ fn chunk_file_contents(
     let normalized_symbols = symbols.map(|items| {
         let mut filtered = items
             .iter()
+            .filter(|symbol| is_chunk_boundary_symbol(symbol))
             .cloned()
-            .filter(is_chunk_boundary_symbol)
             .collect::<Vec<_>>();
 
         if filtered.iter().any(has_zero_based_lines) {

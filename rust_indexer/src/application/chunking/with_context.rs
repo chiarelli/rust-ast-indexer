@@ -16,7 +16,7 @@ impl<S> ContextInjectionChunker<S> {
 impl<S: ChunkStrategy> ChunkStrategy for ContextInjectionChunker<S> {
     fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
         let chunks = self.inner.chunk_file(file_path, source, symbols);
-        let symbol_index = symbols.map(index_symbols_by_id);
+        let symbol_index = symbols.map(|items| index_symbols_by_id(items.as_slice()));
 
         chunks
             .into_iter()
@@ -47,7 +47,7 @@ fn inject_context(
     chunk
 }
 
-fn index_symbols_by_id(symbols: &Vec<Symbol>) -> std::collections::HashMap<String, Symbol> {
+fn index_symbols_by_id(symbols: &[Symbol]) -> std::collections::HashMap<String, Symbol> {
     symbols.iter().cloned().map(|symbol| (symbol.id.clone(), symbol)).collect()
 }
 

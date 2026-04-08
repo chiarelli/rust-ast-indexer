@@ -13,11 +13,15 @@ mod typescript_adapter {
     pub struct TypeScriptAdapter;
 
     impl Default for TypeScriptAdapter {
-        fn default() -> Self { Self }
+        fn default() -> Self {
+            Self
+        }
     }
 
     impl TypeScriptAdapter {
-        pub fn new() -> Self { TypeScriptAdapter }
+        pub fn new() -> Self {
+            TypeScriptAdapter
+        }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
@@ -32,7 +36,9 @@ mod typescript_adapter {
 
         fn node_type(kind: &str) -> Option<&str> {
             match kind {
-                "function_declaration" | "arrow_function" | "function_expression" => Some("function"),
+                "function_declaration" | "arrow_function" | "function_expression" => {
+                    Some("function")
+                }
                 "class_declaration" => Some("class"),
                 "enum_declaration" => Some("enum"),
                 "interface_declaration" => Some("interface"),
@@ -120,8 +126,10 @@ mod typescript_adapter {
                         let name = Self::extract_name(&node, source);
                         let start_line = node.start_position().row;
                         let end_line = node.end_position().row;
-                        let signature =
-                            node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string());
+                        let signature = node
+                            .utf8_text(source.as_bytes())
+                            .ok()
+                            .map(|s| s.to_string());
                         let id = format!("{}:{}", file_path, name);
 
                         symbols.push(Symbol {
@@ -138,23 +146,11 @@ mod typescript_adapter {
                         // Update scope when descending into classes/functions
                         let new_scope = name.clone();
                         if cursor.goto_first_child() {
-                            Self::walk_tree(
-                                cursor,
-                                source,
-                                file_path,
-                                Some(&new_scope),
-                                symbols,
-                            );
+                            Self::walk_tree(cursor, source, file_path, Some(&new_scope), symbols);
                             cursor.goto_parent();
                         }
                     } else if node.child_count() > 0 && cursor.goto_first_child() {
-                        Self::walk_tree(
-                            cursor,
-                            source,
-                            file_path,
-                            scope,
-                            symbols,
-                        );
+                        Self::walk_tree(cursor, source, file_path, scope, symbols);
                         cursor.goto_parent();
                     }
                 }
@@ -179,7 +175,11 @@ mod typescript_adapter {
                 if kind == "import_declaration" || kind == "import_statement" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let text = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     let edge = crate::domain::types::ImportEdge {
                         id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
                         from_file: file_path.to_string(),
@@ -187,7 +187,12 @@ mod typescript_adapter {
                         imported_symbol: None,
                         alias: None,
                         import_kind: "named".to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -204,7 +209,10 @@ mod typescript_adapter {
             }
         }
 
-        pub fn extract_imports(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        pub fn extract_imports(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -228,14 +236,21 @@ mod typescript_adapter {
                     let end = node.end_position();
                     // try to get callee text (prefer direct child), fallback to full node text
                     let raw_callee = if kind == "call_expression" {
-                        node.child(0).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
+                        node.child(0)
+                            .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                            .unwrap_or_default()
                     } else {
-                        node.child(1).and_then(|c| c.utf8_text(source.as_bytes()).ok()).unwrap_or_default()
+                        node.child(1)
+                            .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                            .unwrap_or_default()
                     };
                     // derive a canonical callee name: take last identifier after '.' or '::', strip args
                     let mut callee = raw_callee.to_string();
                     if callee.is_empty() {
-                        callee = node.utf8_text(source.as_bytes()).unwrap_or_default().to_string();
+                        callee = node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or_default()
+                            .to_string();
                     }
                     // remove leading "new " if present
                     if callee.starts_with("new ") {
@@ -247,7 +262,7 @@ mod typescript_adapter {
                     }
                     // take last path segment after '.' or ':' characters
                     if callee.contains('.') || callee.contains(':') || callee.contains('?') {
-                        let parts: Vec<&str> = callee.split(|c: char| c == '.' || c == ':' || c == '?').collect();
+                        let parts: Vec<&str> = callee.split(['.', ':', '?']).collect();
                         if let Some(last) = parts.last() {
                             callee = last.to_string();
                         }
@@ -284,7 +299,12 @@ mod typescript_adapter {
                         callee_name: callee.clone(),
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
-                        location: crate::domain::types::Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: crate::domain::types::Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -301,7 +321,10 @@ mod typescript_adapter {
             }
         }
 
-        pub fn extract_calls(&self, parsed: &crate::domain::parser::ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        pub fn extract_calls(
+            &self,
+            parsed: &crate::domain::parser::ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
@@ -328,11 +351,17 @@ mod typescript_adapter {
             Ok(symbols)
         }
 
-        fn extract_imports(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::ImportEdge>> {
+        fn extract_imports(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::ImportEdge>> {
             TypeScriptAdapter::extract_imports(self, parsed)
         }
 
-        fn extract_calls(&self, parsed: &ParsedFile) -> Result<Vec<crate::domain::types::CallEdge>> {
+        fn extract_calls(
+            &self,
+            parsed: &ParsedFile,
+        ) -> Result<Vec<crate::domain::types::CallEdge>> {
             TypeScriptAdapter::extract_calls(self, parsed)
         }
 
@@ -352,4 +381,5 @@ mod typescript_adapter {
     // stub implementation when parsing feature not enabled
 }
 
+#[cfg(feature = "parsing")]
 pub use typescript_adapter::*;

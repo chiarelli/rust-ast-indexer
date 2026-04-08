@@ -13,11 +13,15 @@ mod go_adapter {
     pub struct GoAdapter;
 
     impl Default for GoAdapter {
-        fn default() -> Self { Self }
+        fn default() -> Self {
+            Self
+        }
     }
 
     impl GoAdapter {
-        pub fn new() -> Self { GoAdapter }
+        pub fn new() -> Self {
+            GoAdapter
+        }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
@@ -97,8 +101,10 @@ mod go_adapter {
                         let name = Self::extract_name(&node, source);
                         let start_line = node.start_position().row;
                         let end_line = node.end_position().row;
-                        let signature =
-                            node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string());
+                        let signature = node
+                            .utf8_text(source.as_bytes())
+                            .ok()
+                            .map(|s| s.to_string());
                         let id = format!("{}:{}", file_path, name);
 
                         symbols.push(Symbol {
@@ -115,23 +121,11 @@ mod go_adapter {
                         // Update scope when descending into functions/methods
                         let new_scope = name.clone();
                         if cursor.goto_first_child() {
-                            Self::walk_tree(
-                                cursor,
-                                source,
-                                file_path,
-                                Some(&new_scope),
-                                symbols,
-                            );
+                            Self::walk_tree(cursor, source, file_path, Some(&new_scope), symbols);
                             cursor.goto_parent();
                         }
                     } else if node.child_count() > 0 && cursor.goto_first_child() {
-                        Self::walk_tree(
-                            cursor,
-                            source,
-                            file_path,
-                            scope,
-                            symbols,
-                        );
+                        Self::walk_tree(cursor, source, file_path, scope, symbols);
                         cursor.goto_parent();
                     }
                 }
@@ -156,7 +150,11 @@ mod go_adapter {
                 if kind == "import_declaration" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    let text = node.utf8_text(source.as_bytes()).ok().map(|s| s.to_string()).unwrap_or_default();
+                    let text = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
                     let edge = ImportEdge {
                         id: format!("ie:{}:{}:{}", file_path, start.row, start.column),
                         from_file: file_path.to_string(),
@@ -164,7 +162,12 @@ mod go_adapter {
                         imported_symbol: None,
                         alias: None,
                         import_kind: "named".to_string(),
-                        location: Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -199,10 +202,15 @@ mod go_adapter {
                     // We'll extract the function name from the function position
                     let callee = if let Some(func_node) = node.child(0) {
                         // Try to get the function name text
-                        func_node.utf8_text(source.as_bytes()).unwrap_or_default().to_string()
+                        func_node
+                            .utf8_text(source.as_bytes())
+                            .unwrap_or_default()
+                            .to_string()
                     } else {
                         // Fallback to full node text
-                        node.utf8_text(source.as_bytes()).unwrap_or_default().to_string()
+                        node.utf8_text(source.as_bytes())
+                            .unwrap_or_default()
+                            .to_string()
                     };
 
                     // Determine caller by searching ancestors for a function-like node
@@ -218,11 +226,12 @@ mod go_adapter {
                     }
 
                     // Simple heuristic for call kind - in Go we can check for complex expressions
-                    let call_kind = if callee.contains('[') || callee.contains('&') || callee.contains('*') {
-                        "dynamic"
-                    } else {
-                        "static"
-                    };
+                    let call_kind =
+                        if callee.contains('[') || callee.contains('&') || callee.contains('*') {
+                            "dynamic"
+                        } else {
+                            "static"
+                        };
 
                     let edge = CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
@@ -230,7 +239,12 @@ mod go_adapter {
                         callee_name: callee,
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
-                        location: Location { start_line: start.row, start_col: start.column, end_line: end.row, end_col: end.column },
+                        location: Location {
+                            start_line: start.row,
+                            start_col: start.column,
+                            end_line: end.row,
+                            end_col: end.column,
+                        },
                         resolved: false,
                     };
                     edges.push(edge);
@@ -305,4 +319,5 @@ mod go_adapter {
     // stub implementation when parsing feature not enabled
 }
 
+#[cfg(feature = "parsing")]
 pub use go_adapter::*;
