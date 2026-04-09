@@ -374,7 +374,7 @@ mod tests {
             .iter()
             .find(|chunk| chunk.chunk_kind.as_deref() == Some("Symbol") && chunk.content.contains("pub fn add"))
             .expect("expected a symbol chunk for pub fn add");
-        assert!(chunk.symbol_ids.len() >= 1);
+        assert!(!chunk.symbol_ids.is_empty());
         assert!(chunk.content.starts_with("use std::fmt;\n\n"));
         assert_eq!(chunk.metadata.as_ref().and_then(|meta| meta.get("has_context_prefix")), Some(&serde_json::Value::Bool(true)));
         assert_eq!(chunk.language.as_deref(), Some("rust"));

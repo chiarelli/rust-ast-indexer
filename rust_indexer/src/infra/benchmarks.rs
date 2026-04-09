@@ -204,7 +204,7 @@ mod tests {
         let start = Instant::now();
         for _ in 0..100 {
             let result = parse_once(pool.get("java").unwrap().as_ref(), source).unwrap();
-            assert!(result.1.len() >= 1);
+            assert!(!result.1.is_empty());
         }
         let elapsed = start.elapsed();
         assert!(
@@ -516,7 +516,7 @@ mod tests {
 
         let elapsed = start.elapsed();
         let total_symbols: usize = results.iter().sum();
-        let total_files = results.iter().filter(|&&s| s > 0 || true).count();
+        let total_files = results.len();
 
         eprintln!(
             "500-file parallel benchmark: {} files, {} symbols, elapsed: {:?}",
@@ -669,6 +669,7 @@ mod tests {
 
     /// Helper to create a set of source files across multiple languages
     fn create_file_set(base_dir: &std::path::Path, count: usize) {
+        #[allow(clippy::type_complexity)]
         let langs: Vec<(&str, &str, Box<dyn Fn(usize) -> String>)> = vec![
             (
                 "rs",

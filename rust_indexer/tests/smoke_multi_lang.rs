@@ -33,11 +33,11 @@ fn build_ctx() -> Arc<ApplicationContext> {
 
 #[allow(dead_code)]
 fn create_multi_lang_repo(dir: &Path) -> Vec<PathBuf> {
-    let mut files = Vec::new();
-
-    files.push(create_rust_file(dir));
-    files.push(create_typescript_file(dir));
-    files.push(create_java_file(dir));
+    let files = vec![
+        create_rust_file(dir),
+        create_typescript_file(dir),
+        create_java_file(dir),
+    ];
 
     files
 }

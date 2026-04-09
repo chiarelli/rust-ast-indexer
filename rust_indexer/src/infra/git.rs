@@ -66,8 +66,8 @@ mod tests {
     fn init_repo(path: &std::path::Path) {
         let p = path.to_str().unwrap();
         Command::new("git").arg("-C").arg(p).arg("init").output().expect("git init failed");
-        Command::new("git").arg("-C").arg(p).args(&["config", "user.email", "you@example.com"]).output().unwrap();
-        Command::new("git").arg("-C").arg(p).args(&["config", "user.name", "Tester"]).output().unwrap();
+        Command::new("git").arg("-C").arg(p).args(["config", "user.email", "you@example.com"]).output().unwrap();
+        Command::new("git").arg("-C").arg(p).args(["config", "user.name", "Tester"]).output().unwrap();
     }
 
     #[test]

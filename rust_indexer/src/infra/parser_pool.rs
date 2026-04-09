@@ -304,7 +304,7 @@ public class OrderService {
     fn pool_empty_source_all_languages() {
         let pool = build_pool();
         for lang in &["rust", "typescript", "java"] {
-            let adapter = pool.get(lang).expect(&format!("{} adapter should exist", lang));
+            let adapter = pool.get(lang).unwrap_or_else(|| panic!("{} adapter should exist", lang));
             let parsed = adapter.parse_source("").expect("empty source should parse");
             assert_eq!(parsed.source_len, 0);
         }
