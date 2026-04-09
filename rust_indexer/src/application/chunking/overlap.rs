@@ -35,8 +35,9 @@ impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
             }
 
             let group = reordered[start..end].to_vec();
-            for (index, (_, chunk)) in group.into_iter().enumerate() {
-                let file_chunks_len = end - start;
+            let file_chunks_len = end - start;
+            for index in 0..file_chunks_len {
+                let (_, chunk) = &group[index];
                 let has_prev = index > 0;
                 let has_next = index + 1 < file_chunks_len;
                 let expanded_start = if has_prev {
@@ -49,7 +50,9 @@ impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
                 } else {
                     chunk.end_line
                 };
-                output.push(expand_chunk(chunk, source, expanded_start, expanded_end, self.overlap_lines));
+                let previous_chunk_id = has_prev.then(|| group[index - 1].1.id.clone());
+                let next_chunk_id = has_next.then(|| group[index + 1].1.id.clone());
+                output.push(expand_chunk(chunk.clone(), source, expanded_start, expanded_end, self.overlap_lines, previous_chunk_id, next_chunk_id));
             }
 
             start = end;
@@ -59,7 +62,7 @@ impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
     }
 }
 
-fn expand_chunk(mut chunk: Chunk, source: &str, start_line: usize, end_line: usize, overlap_lines: usize) -> Chunk {
+fn expand_chunk(mut chunk: Chunk, source: &str, start_line: usize, end_line: usize, overlap_lines: usize, previous_chunk_id: Option<String>, next_chunk_id: Option<String>) -> Chunk {
     let content = lines_to_string(source, start_line, end_line);
     let digest = blake3::hash(content.as_bytes()).to_hex().to_string();
 
@@ -68,6 +71,12 @@ fn expand_chunk(mut chunk: Chunk, source: &str, start_line: usize, end_line: usi
         "overlap_lines".to_string(),
         serde_json::Value::Number(serde_json::Number::from(overlap_lines as u64)),
     );
+    if let Some(previous_chunk_id) = previous_chunk_id {
+        metadata.insert("previous_chunk_id".to_string(), serde_json::Value::String(previous_chunk_id));
+    }
+    if let Some(next_chunk_id) = next_chunk_id {
+        metadata.insert("next_chunk_id".to_string(), serde_json::Value::String(next_chunk_id));
+    }
     if !metadata.contains_key("chunk_strategy") {
         metadata.insert(
             "chunk_strategy".to_string(),
@@ -168,6 +177,7 @@ mod tests {
         assert!(chunks[1].content.contains("line2"));
         assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()), Some(1));
         assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("overlap".to_string())));
+        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("next_chunk_id")).and_then(|value| value.as_str()), Some("chk-src/lib.rs-2"));
     }
 
     #[test]

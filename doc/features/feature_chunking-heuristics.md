@@ -29,8 +29,9 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 | Status | Task | Atividade | Observação |
 |---|---|---|---|
 | ❌ | chunking/semantic | chunker semântico: agrupar símbolos relacionados (impls ↔ struct traits ↔ type) | Heurística por linguagem |
-| ❌ | chunking/tokens | limitar por token count (estimativa), não apenas linhas | Usar contagem aproximada (chars/4) |
-| ❌ | chunking/overlap | permitir overlap entre chunks vizinhos para preservar contexto de fronteira | Configurável (overlap_lines) |
+| ❌ | chunking/lines | limitar por contagem de linhas, não por tokens | Default 200 linhas |
+| ❌ | chunking/token-count | contagem de tokens opcional por chunk | Feature `token_counting` com `wordchipper` |
+| ❌ | chunking/overlap | permitir overlap entre chunks vizinhos para preservar contexto de fronteira | Incluir chunk anterior e seguinte quando aplicável |
 | ❌ | chunking/fallback | fallback para arquivos sem símbolos conhecidos (ex.: config, markdown, txt) | Chunk por blocos de tamanho fixo |
 | ❌ | benchmarks | medir latência e throughput do chunker com 100–500 arquivos | Adicionar a infra/benchmarks.rs |
 | ❌ | smoke-test | smoke test multi-estratégia: validar diferentes chunkers em mesmo arquivo | — |
@@ -59,7 +60,7 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 | Smoke test validando estrutura de chunks | ✅ |
 | Documentação atualizada (indexer_spec.md ou doc/chunking.md) | ✅ |
 | Testes totais: objetivo 60+ unitários + integração | ✅ |
-| Compilação limpa com `--features parsing` | ✅ |
+| Compilação limpa com `--features parsing` | ❌ |
 | `cargo clippy -- -D warnings` sem warnings | ❌ |
 
 ---
@@ -69,7 +70,7 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 - **Dependência de adapters**: chunker depende de símbolos extraídos corretamente por `LanguageAdapter` (feature/tree-sitter-adapters consolidada).
 - **Variações linguísticas**: heurísticas de split podem precisar de ajustes por linguagem (ex.: macros Rust, decorators TS).
 - **Performance**: chunking adiciona overhead ao pipeline; necessário bench para validar impacto (< 5% do tempo total de indexação).
-- **Token counting**: estimativa por caracteres pode ser imprecisa; avaliar se justifica integrar tokenizer real ou manter aproximação.
+- **Token counting opcional**: a contagem só deve ocorrer quando a feature `token_counting` estiver habilitada; a execução padrão não deve depender de tokenizer externo.
 - **Backpressure**: chunks maiores ou em maior volume podem exigir ajustes no mecanismo de backpressure (feature/backpressure-and-resume).
 
 #### Decisões técnicas propostas
@@ -112,9 +113,9 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 
 ### Decisões técnicas documentadas (a preencher)
 
-1. Token counting opt-in — evita overhead desnecessário no path padrão; caller paga só quando precisa. Bom usar token_count como estimativa (chars/4 é fallback rápido se a lib falhar).
+1. Token counting opt-in — evita overhead desnecessário no path padrão; `wordchipper` só é usado quando a feature `token_counting` estiver ligada.
 2. Limite de linhas configurável por chunk, default 200 — funciona bem para context windows de LLM (tipicamente 2K–8K tokens); configurável permite ajuste por caso de uso.
-3. Overlap desabilitado por padrão; porém deixar meta informação do próximo chunk, para evitar funções cortadas — melhor que duplicação real: sem custo de memória extra mas com informação suficiente para reconstruir contexto se necessário. O metadata pode incluir next_chunk_id, next_symbol_id, ou continuation_hint (ex.: "function UserService::delete continua no próximo chunk").
+3. Overlap deve incluir o chunk anterior e o seguinte quando aplicável, preservando metadados do chunk original e adicionando `previous_chunk_id` / `next_chunk_id`.
 4. Usar `chk-<hash>` para melhor performance (determinístico baseado em hash de assinatura, filepath, strategy, etc.).
 
 ---
@@ -135,7 +136,8 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
   "metadata": {
     "has_imports_prefix": true,
     "scope_chain": ["services", "user", "UserService"],
-    "tokens_estimate": 180,
+    "line_count": 180,
+    "token_count": 512,
     "split_from_symbol": "UserService::add"
   }
 }
@@ -159,7 +161,7 @@ O comando `index_path` e `incremental_index` deverão suportar `chunking_options
         "max_lines": 200,
         "overlap_lines": 0,
         "include_context": true,
-        "token_limit": null
+        "token_counting": false
       }
     }
   }
@@ -218,40 +220,17 @@ perf(chunking): add benchmark for chunker throughput
     - task: chunking/context
       - atividade: feat(chunking): add context injection decorator (imports + scope)
       - atividade: test(chunking): verify context prefix in chunks
-    - task: integration
-      - atividade: feat(indexer): integrate chunker into parallel pipeline
-      - atividade: test(smoke): add chunking end-to-end smoke test
-    - task: docs
-      - atividade: docs: document chunk schema and strategies in indexer_spec.md
   - fase-2: estratégias avançadas e otimização
     - task: chunking/semantic
-      - atividade: feat(chunking): add semantic grouping strategy (impl↔struct)
-    - task: chunking/tokens
-      - atividade: feat(chunking): implement token-count based limits
+      - atividade: feat(chunking): group related symbols semantically
+      - atividade: test(chunking): add semantic chunker tests
+    - task: chunking/lines
+      - atividade: feat(chunking): limit chunks by line count
+      - atividade: test(chunking): add line-limited chunker tests
+    - task: chunking/token-count
+      - atividade: feat(chunking): make token counting optional with wordchipper
+      - atividade: test(chunking): token counting opt-in tests
     - task: chunking/overlap
-      - atividade: feat(chunking): add configurable overlap between chunks
-    - task: benchmarks
-      - atividade: perf(chunking): add chunker throughput benchmarks
-  - fase-3: integração final e CI
-    - task: config
-      - atividade: feat(cli): expose ChunkingOptions in index_path payload
-    - task: tests/ci
-      - atividade: test(ci): add unit tests for all chunking strategies
-    - task: docs/atualização
-      - atividade: docs: finalize chunk schema in indexer_spec.md
-
-Cada atividade corresponde a um commit com o título no formato: type(scope): short description
-Exemplo: `feat(chunking): add symbol-boundary chunker strategy`.
-
-Branches por task: `feature/chunking-heuristics/<task-name>` (ex.: `feature/chunking-heuristics/domain-chunk-model`).
-
-Cada task DEVE incluir testes de unidade cobrindo cenários 'happy' e 'unhappy' (erro), e deve cobrir todas as funções/métodos envolvidos, incluindo helpers privados (via #[cfg(test)] no mesmo módulo).
-
-Critérios de aceitação por atividade:
-- Todos os testes unitários passam localmente (`cargo test`).
-- `cargo clippy` deve passar sem warnings (usar `-D warnings` na CI).
-- Cobertura de unidade para o módulo alvo é >= 90% (meta; documentar exceções).
-- Commit está nomeado no formato `type(scope): short description`.
-- Ao commitar: usar explicitamente `git add <file>` (não `git add .`).
-- Testes de integração/smoke para a task rodando via binário devem existir quando aplicável.
-- Documentação mínima (README ou comentário no módulo) explicando a função e como testar.
+      - atividade: feat(chunking): add neighboring overlap and neighbor ids
+      - atividade: test(chunking): verify previous and next chunk metadata
+```

@@ -203,7 +203,7 @@ impl Indexer {
     }
 }
 
-const APPROX_TOKEN_LIMIT: usize = 200;
+const MAX_LINES_PER_CHUNK: usize = 200;
 const OVERLAP_LINES: usize = 1;
 
 fn chunk_file_contents(
@@ -231,11 +231,11 @@ fn chunk_file_contents(
 
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
-            let decorated = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT), OVERLAP_LINES));
+            let decorated = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES));
             decorated.chunk_file(file_path, source, Some(syms))
         }
         _ => {
-            let chunker = OverlapChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT), OVERLAP_LINES);
+            let chunker = OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES);
             chunker.chunk_file(file_path, source, None)
         }
     };
@@ -411,6 +411,7 @@ mod tests {
         assert_eq!(grouped.chunk_kind.as_deref(), Some("Symbol"));
         assert_eq!(grouped.metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
         assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()) == Some(1));
+        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("next_chunk_id")).and_then(|value| value.as_str()).map(|value| value.starts_with("chk-sem-")).unwrap_or(false));
         assert!(grouped.symbol_ids.len() >= 3);
         assert!(grouped.content.contains("impl UserService"));
         assert!(result.chunks.iter().any(|chunk| chunk.symbol_ids == vec!["<source>:unrelated".to_string()] || chunk.content.contains("fn unrelated")));

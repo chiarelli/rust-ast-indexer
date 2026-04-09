@@ -1,17 +1,17 @@
 use std::collections::HashMap;
 
-use crate::application::chunking::ChunkStrategy;
+use crate::application::chunking::{apply_token_count, ChunkStrategy};
 use crate::domain::types::{Chunk, Symbol};
 
 pub struct SemanticChunker {
-    pub max_tokens: usize,
+    pub max_lines: usize,
     semantic_gap_lines: usize,
 }
 
 impl SemanticChunker {
-    pub fn new(max_tokens: usize) -> Self {
+    pub fn new(max_lines: usize) -> Self {
         Self {
-            max_tokens,
+            max_lines,
             semantic_gap_lines: 3,
         }
     }
@@ -20,11 +20,11 @@ impl SemanticChunker {
 impl ChunkStrategy for SemanticChunker {
     fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
         let Some(symbols) = symbols else {
-            return vec![build_full_file_chunk(file_path, source, self.max_tokens)];
+            return vec![build_full_file_chunk(file_path, source, self.max_lines)];
         };
 
         if symbols.is_empty() {
-            return vec![build_full_file_chunk(file_path, source, self.max_tokens)];
+            return vec![build_full_file_chunk(file_path, source, self.max_lines)];
         }
 
         let mut sorted_symbols = symbols.clone();
@@ -58,11 +58,10 @@ impl ChunkStrategy for SemanticChunker {
             }
 
             let next_end = current_end.max(symbol.end_line);
-            let next_content = lines_to_string(source, current_start, next_end);
-            let next_tokens = approximate_tokens(&next_content);
+            let next_lines = next_end.saturating_sub(current_start) + 1;
             let same_group = current_key.as_ref().zip(symbol_key.as_ref()).map_or(false, |(a, b)| a == b);
             let close_enough = symbol.start_line <= current_end.saturating_add(self.semantic_gap_lines);
-            let fits_limit = self.max_tokens == 0 || next_tokens <= self.max_tokens;
+            let fits_limit = self.max_lines == 0 || next_lines <= self.max_lines;
             let within_anchor = current_anchor_end.map_or(false, |anchor_end| {
                 is_member_symbol(&symbol) && symbol.end_line <= anchor_end
             });
@@ -72,7 +71,16 @@ impl ChunkStrategy for SemanticChunker {
                 current_anchor_end = current_anchor_end.map(|anchor_end| anchor_end.max(symbol.end_line));
                 current_group.push(symbol);
             } else {
-                flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end, current_key.as_deref(), self.max_tokens);
+                flush_group(
+                    file_path,
+                    source,
+                    &mut chunks,
+                    std::mem::take(&mut current_group),
+                    current_start,
+                    current_end,
+                    current_key.as_deref(),
+                    self.max_lines,
+                );
                 current_start = symbol.start_line;
                 current_end = symbol.end_line;
                 current_anchor_end = is_anchor_symbol(&symbol).then_some(symbol.end_line);
@@ -82,15 +90,33 @@ impl ChunkStrategy for SemanticChunker {
         }
 
         if !current_group.is_empty() {
-            flush_group(file_path, source, &mut chunks, current_group, current_start, current_end, current_key.as_deref(), self.max_tokens);
+            flush_group(
+                file_path,
+                source,
+                &mut chunks,
+                current_group,
+                current_start,
+                current_end,
+                current_key.as_deref(),
+                self.max_lines,
+            );
         }
 
         chunks
     }
 }
 
-fn build_full_file_chunk(file_path: &str, source: &str, max_tokens: usize) -> Chunk {
+fn build_full_file_chunk(file_path: &str, source: &str, max_lines: usize) -> Chunk {
     let content = source.to_string();
+    let mut metadata = HashMap::from([
+        ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
+        (
+            "max_line_limit".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
+        ),
+    ]);
+    apply_token_count(&mut metadata, &content);
+
     Chunk {
         id: format!("chk-sem-{}", blake3::hash(content.as_bytes()).to_hex()),
         file_path: file_path.to_string(),
@@ -104,13 +130,7 @@ fn build_full_file_chunk(file_path: &str, source: &str, max_tokens: usize) -> Ch
         symbol_id: None,
         symbol_ids: vec![],
         chunk_kind: Some("FullFile".into()),
-        metadata: Some(HashMap::from([
-            ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
-            (
-                "max_token_limit".to_string(),
-                serde_json::Value::Number(serde_json::Number::from(max_tokens as u64)),
-            ),
-        ])),
+        metadata: Some(metadata),
     }
 }
 
@@ -122,7 +142,7 @@ fn flush_group(
     start_line: usize,
     end_line: usize,
     group_key: Option<&str>,
-    max_tokens: usize,
+    max_lines: usize,
 ) {
     if group.is_empty() {
         return;
@@ -131,11 +151,13 @@ fn flush_group(
     let content = lines_to_string(source, start_line, end_line);
     let symbol_ids = group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
     let symbol_id = symbol_ids.first().cloned();
-    let token_count = approximate_tokens(&content);
-    let mut metadata = HashMap::from([(
-        "chunk_strategy".to_string(),
-        serde_json::Value::String("semantic".to_string()),
-    )]);
+    let mut metadata = HashMap::from([
+        ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
+        (
+            "max_line_limit".to_string(),
+            serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
+        ),
+    ]);
 
     if let Some(key) = group_key {
         metadata.insert("semantic_key".to_string(), serde_json::Value::String(key.to_string()));
@@ -145,14 +167,7 @@ fn flush_group(
         "symbol_count".to_string(),
         serde_json::Value::Number(serde_json::Number::from(symbol_ids.len() as u64)),
     );
-    metadata.insert(
-        "approx_token_count".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(token_count as u64)),
-    );
-    metadata.insert(
-        "max_token_limit".to_string(),
-        serde_json::Value::Number(serde_json::Number::from(max_tokens as u64)),
-    );
+    apply_token_count(&mut metadata, &content);
 
     let digest_input = format!("{}:{}:{}:{}", file_path, start_line, end_line, symbol_ids.join("|"));
     let digest = blake3::hash(digest_input.as_bytes()).to_hex().to_string();
@@ -193,10 +208,6 @@ fn lines_to_string(source: &str, start: usize, end: usize) -> String {
             out
         })
         .collect()
-}
-
-fn approximate_tokens(text: &str) -> usize {
-    text.chars().count().div_ceil(4).max(1)
 }
 
 fn semantic_key(symbol: &Symbol) -> Option<String> {
@@ -297,7 +308,7 @@ mod tests {
         assert!(chunks[0].content.contains("pub struct UserService"));
         assert!(chunks[0].content.contains("pub fn add"));
         assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_token_limit")).and_then(|value| value.as_u64()), Some(0));
+        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(0));
         assert_eq!(chunks[1].symbol_ids, vec!["sym::unrelated".to_string()]);
     }
 
@@ -332,6 +343,25 @@ mod tests {
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].symbol_ids, vec!["sym::database".to_string(), "sym::connect".to_string(), "sym::query".to_string()]);
         assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("semantic_key")), Some(&serde_json::Value::String("database".to_string())));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_token_limit")).and_then(|value| value.as_u64()), Some(0));
+        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(0));
+    }
+
+    #[test]
+    fn semantic_chunker_splits_when_line_limit_is_exceeded() {
+        let source = "class Database {\n    connect() { return true; }\n\n    async query(sql) {\n        return [];\n    }\n}\n";
+        let symbols = vec![
+            symbol("sym::database", "Database", "class", None, None, 1, 7),
+            symbol("sym::connect", "connect", "method", Some("Database"), None, 2, 2),
+            symbol("sym::query", "query", "method", Some("Database"), None, 4, 6),
+        ];
+
+        let chunker = SemanticChunker::new(4);
+        let chunks = chunker.chunk_file("src/lib.ts", source, Some(&symbols));
+
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(chunks[0].symbol_ids, vec!["sym::database".to_string()]);
+        assert_eq!(chunks[1].symbol_ids, vec!["sym::connect".to_string()]);
+        assert_eq!(chunks[2].symbol_ids, vec!["sym::query".to_string()]);
+        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(4));
     }
 }
