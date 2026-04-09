@@ -47,6 +47,19 @@ The event payload is intentionally smaller than the domain `Chunk` model.
 
 ## Strategies
 
+### Semantic chunker
+
+`SemanticChunker` groups symbols that belong together, especially when a type and its related implementation or scoped members should stay in the same chunk.
+
+Behavior:
+
+- groups symbols by semantic anchor when possible
+- keeps structs/classes/traits aligned with related impl blocks
+- uses scope information when adapters provide it
+- falls back to a full-file chunk when no symbols are provided
+
+Best suited for source files where related declarations should remain adjacent for downstream retrieval.
+
 ### Symbol boundary chunker
 
 `SymbolBoundaryChunker` splits source code at symbol boundaries.
@@ -57,7 +70,7 @@ Behavior:
 - falls back to a full-file chunk when no symbols are provided
 - drops symbol chunks that exceed the configured line limit
 
-Best suited for source files where semantic boundaries are important.
+Best suited for source files where exact symbol boundaries are important.
 
 ### Size-limited chunker
 
@@ -97,9 +110,9 @@ The metadata currently includes:
 
 ## Indexer integration
 
-The indexer now uses the chunking abstractions when building emitted chunks. In the current Phase 1 wiring:
+The indexer now uses the chunking abstractions when building emitted chunks. In the current wiring:
 
-- symbol-aware files use the symbol boundary strategy
+- symbol-aware files use the semantic strategy
 - files with extracted symbols receive context injection
 - unsupported or symbol-less files fall back to full-file chunks
 
@@ -118,5 +131,4 @@ Planned next steps for later phases:
 
 - token-based chunk limits
 - overlap support
-- semantic grouping heuristics
 - CLI-exposed chunking configuration
