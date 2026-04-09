@@ -203,6 +203,8 @@ impl Indexer {
     }
 }
 
+const APPROX_TOKEN_LIMIT: usize = 200;
+
 fn chunk_file_contents(
     file_path: &str,
     source: &str,
@@ -228,11 +230,11 @@ fn chunk_file_contents(
 
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
-            let decorated = ContextInjectionChunker::new(SemanticChunker::new(0));
+            let decorated = ContextInjectionChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT));
             decorated.chunk_file(file_path, source, Some(syms))
         }
         _ => {
-            let chunker = SemanticChunker::new(0);
+            let chunker = SemanticChunker::new(APPROX_TOKEN_LIMIT);
             chunker.chunk_file(file_path, source, None)
         }
     };
