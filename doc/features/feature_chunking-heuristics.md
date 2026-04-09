@@ -24,17 +24,17 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 | ✅ | integration | smoke test: validar que chunks emitidos têm estrutura e contexto corretos | atual |
 | ✅ | docs | documentar modelo de chunk em doc/indexer_spec.md (ou doc/chunking.md) | atual |
 
-### fase-2: estratégias avançadas e otimização — PENDENTE
+### fase-2: estratégias avançadas e otimização — CONCLUÍDA
 
 | Status | Task | Atividade | Observação |
 |---|---|---|---|
-| ❌ | chunking/semantic | chunker semântico: agrupar símbolos relacionados (impls ↔ struct traits ↔ type) | Heurística por linguagem |
-| ❌ | chunking/lines | limitar por contagem de linhas, não por tokens | Default 200 linhas |
-| ❌ | chunking/token-count | contagem de tokens opcional por chunk | Feature `token_counting` com `wordchipper` |
-| ❌ | chunking/overlap | permitir overlap entre chunks vizinhos para preservar contexto de fronteira | Incluir chunk anterior e seguinte quando aplicável |
-| ❌ | chunking/fallback | fallback para arquivos sem símbolos conhecidos (ex.: config, markdown, txt) | Chunk por blocos de tamanho fixo |
-| ❌ | benchmarks | medir latência e throughput do chunker com 100–500 arquivos | Adicionar a infra/benchmarks.rs |
-| ❌ | smoke-test | smoke test multi-estratégia: validar diferentes chunkers em mesmo arquivo | — |
+| ✅ | chunking/semantic | chunker semântico: agrupar símbolos relacionados (impls ↔ struct traits ↔ type) | Implementado e testado |
+| ✅ | chunking/lines | limitar por contagem de linhas, não por tokens | Implementado (configurável) |
+| ✅ | chunking/token-count | contagem de tokens opcional por chunk | Implementado como opt-in com feature `token_counting` |
+| ✅ | chunking/overlap | permitir overlap entre chunks vizinhos para preservar contexto de fronteira | Implementado; adiciona previous/next ids |
+| ✅ | chunking/fallback | fallback para arquivos sem símbolos conhecidos (ex.: config, markdown, txt) | Implementado (chunks por blocos) |
+| ✅ | benchmarks | medir latência e throughput do chunker com 100–500 arquivos | Benchmarks adicionados na infra |
+| ✅ | smoke-test | smoke test multi-estratégia: validar diferentes chunkers em mesmo arquivo | Smoke tests multiestratégia criados |
 
 ### fase-3: integração final e CI — PENDENTE
 
