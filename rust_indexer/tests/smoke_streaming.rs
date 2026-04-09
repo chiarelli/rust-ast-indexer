@@ -11,7 +11,7 @@ fn spawn_indexer() -> Child {
             .spawn()
             .expect("failed to spawn indexer")
     } else {
-        let possible = std::path::PathBuf::from(std::env::current_dir().unwrap())
+        let possible = std::env::current_dir().unwrap()
             .join("rust_indexer")
             .join("target")
             .join("debug")
@@ -29,7 +29,7 @@ fn read_next_event(reader: &mut BufReader<std::process::ChildStdout>) -> Value {
     reader
         .read_line(&mut line)
         .expect("failed to read line from child stdout");
-    serde_json::from_str(&line.trim()).expect("failed to parse json event")
+    serde_json::from_str(line.trim()).expect("failed to parse json event")
 }
 
 #[test]
@@ -56,7 +56,7 @@ fn smoke_index_path_streams_file_listed_events() {
         "job_id": "job-smoke-stream-1",
         "payload": {"path": td.path().to_str().unwrap(), "options": {"max_concurrency": 1}}
     });
-    writeln!(stdin, "{}", cmd.to_string()).expect("failed to write command");
+    writeln!(stdin, "{}", cmd).expect("failed to write command");
 
     let mut saw_file_listed = 0;
     let mut got_completed = false;

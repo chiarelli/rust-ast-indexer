@@ -1,6 +1,6 @@
 # Chunking heuristics
 
-This document describes the chunk model and the Phase 1 chunking strategies used by `rust_indexer`.
+This document describes the chunk model and the current chunking strategies used by `rust_indexer`.
 
 ## Chunk model
 
@@ -47,6 +47,20 @@ The event payload is intentionally smaller than the domain `Chunk` model.
 
 ## Strategies
 
+### Line-limited semantic chunker
+
+`SemanticChunker` groups related symbols and uses a 200-line limit by default.
+
+Behavior:
+
+- groups symbols by semantic anchor when possible
+- keeps structs/classes/traits aligned with related impl blocks
+- uses scope information when adapters provide it
+- falls back to a full-file chunk when no symbols are provided
+- stores `max_line_limit` in metadata
+
+Best suited for source files where related declarations should remain adjacent for downstream retrieval.
+
 ### Symbol boundary chunker
 
 `SymbolBoundaryChunker` splits source code at symbol boundaries.
@@ -57,11 +71,11 @@ Behavior:
 - falls back to a full-file chunk when no symbols are provided
 - drops symbol chunks that exceed the configured line limit
 
-Best suited for source files where semantic boundaries are important.
+Best suited for source files where exact symbol boundaries are important.
 
-### Size-limited chunker
+### Line-limited chunker
 
-`SizeLimitedChunker` groups adjacent symbols until the configured line limit would be exceeded.
+`LineLimitedChunker` groups adjacent symbols until the configured line limit would be exceeded.
 
 Behavior:
 
@@ -69,6 +83,8 @@ Behavior:
 - splits between symbols when the group would become too large
 - preserves oversized symbols in their own chunk
 - falls back to a full-file chunk when no symbols are available
+- stores `max_line_limit` in metadata
+- optionally adds `token_count` metadata when the `token_counting` feature is enabled
 
 Best suited for balancing semantic grouping with deterministic size limits.
 
@@ -95,28 +111,44 @@ The metadata currently includes:
 - `context_import_count`
 - `context_scope_count`
 
+### Overlap decorator
+
+`OverlapChunker` wraps another chunker and expands each chunk to include neighboring line context.
+
+Behavior:
+
+- includes the previous chunk’s trailing lines when available
+- includes the next chunk’s leading lines when available
+- stores `previous_chunk_id` and `next_chunk_id` when those neighbors exist
+- preserves inner chunk metadata and adds `overlap_lines`
+
+Best suited for preserving boundary context without changing the underlying chunking strategy.
+
 ## Indexer integration
 
-The indexer now uses the chunking abstractions when building emitted chunks. In the current Phase 1 wiring:
+The indexer now uses the chunking abstractions when building emitted chunks. In the current wiring:
 
-- symbol-aware files use the symbol boundary strategy
+- symbol-aware files use the semantic strategy
 - files with extracted symbols receive context injection
 - unsupported or symbol-less files fall back to full-file chunks
+- overlap is applied around emitted chunks to preserve boundary context
 
-## Current Phase 1 status
+## Current status
 
 Implemented:
 
 - `Chunk` model expansion and validation
 - symbol-boundary chunking
-- size-limited chunking
+- line-limited chunking
 - context injection decorator
+- overlap decorator
 - indexer integration with `chunk_emitted`
 - smoke coverage for emitted chunk payloads
 
 Planned next steps for later phases:
 
-- token-based chunk limits
-- overlap support
-- semantic grouping heuristics
 - CLI-exposed chunking configuration
+- optional token counting feature enabled by `token_counting`
+- fallback chunker for symbol-less files
+- chunker benchmarks
+- multi-strategy smoke test

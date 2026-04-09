@@ -10,8 +10,8 @@ fn binary_indexes_files_from_git_tracked_and_diff() {
 
     // init git repo and config
     std::process::Command::new("git").arg("-C").arg(root).arg("init").output().unwrap();
-    std::process::Command::new("git").arg("-C").arg(root).args(&["config","user.email","you@example.com"]).output().unwrap();
-    std::process::Command::new("git").arg("-C").arg(root).args(&["config","user.name","Tester"]).output().unwrap();
+    std::process::Command::new("git").arg("-C").arg(root).args(["config","user.email","you@example.com"]).output().unwrap();
+    std::process::Command::new("git").arg("-C").arg(root).args(["config","user.name","Tester"]).output().unwrap();
 
     // add initial file and commit
     std::fs::write(root.join("a.txt"), b"hello").unwrap();

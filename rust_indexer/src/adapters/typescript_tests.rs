@@ -50,7 +50,7 @@ import { useState, useEffect } from "react";
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let imports: Vec<_> = syms.iter().filter(|s| s.kind == "import").collect();
-        assert!(imports.len() >= 1, "Expected imports, got: {:?}", syms);
+        assert!(!imports.is_empty(), "Expected imports, got: {:?}", syms);
     }
 
     #[test]
@@ -62,7 +62,7 @@ export function getVersion() { return "1.0.0"; }
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let exports: Vec<_> = syms.iter().filter(|s| s.kind == "export").collect();
-        assert!(exports.len() >= 1, "Expected exports, got: {:?}", syms);
+        assert!(!exports.is_empty(), "Expected exports, got: {:?}", syms);
     }
 
     #[test]
@@ -200,7 +200,7 @@ const greet = (name) => `Hello, ${name}`;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let functions: Vec<_> = syms.iter().filter(|s| s.kind == "function").collect();
-        assert!(functions.len() >= 1, "Expected functions, got: {:?}", syms.iter().map(|s| &s.kind).collect::<Vec<_>>());
+        assert!(!functions.is_empty(), "Expected functions, got: {:?}", syms.iter().map(|s| &s.kind).collect::<Vec<_>>());
     }
 
     #[test]

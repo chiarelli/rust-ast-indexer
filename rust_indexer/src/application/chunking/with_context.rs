@@ -1,6 +1,6 @@
 use std::collections::{BTreeSet, HashSet};
 
-use crate::application::chunking::ChunkStrategy;
+use crate::application::chunking::{apply_token_count, ChunkStrategy};
 use crate::domain::types::{Chunk, Symbol};
 
 pub struct ContextInjectionChunker<S> {
@@ -42,8 +42,11 @@ fn inject_context(
     chunk.size = content.len();
     chunk.md5 = blake3::hash(content.as_bytes()).to_hex().to_string();
     chunk.content = content.clone();
-    chunk.text = content;
+    chunk.text = content.clone();
     chunk.metadata = merge_metadata(chunk.metadata.take(), imports, scopes);
+    if let Some(metadata) = &mut chunk.metadata {
+        apply_token_count(metadata, &content);
+    }
     chunk
 }
 

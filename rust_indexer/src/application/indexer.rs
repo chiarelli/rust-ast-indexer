@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 use crate::app::bootstrap::ApplicationContext;
-use crate::application::chunking::{ChunkStrategy, ContextInjectionChunker, SymbolBoundaryChunker};
+use crate::application::chunking::{ChunkStrategy, ContextInjectionChunker, OverlapChunker, SemanticChunker};
 use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord, Symbol};
 use crate::infra::parser_pool::ParserPool;
@@ -203,6 +203,9 @@ impl Indexer {
     }
 }
 
+const MAX_LINES_PER_CHUNK: usize = 200;
+const OVERLAP_LINES: usize = 1;
+
 fn chunk_file_contents(
     file_path: &str,
     source: &str,
@@ -228,11 +231,11 @@ fn chunk_file_contents(
 
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
-            let decorated = ContextInjectionChunker::new(SymbolBoundaryChunker::new(0));
+            let decorated = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES));
             decorated.chunk_file(file_path, source, Some(syms))
         }
         _ => {
-            let chunker = SymbolBoundaryChunker::new(0);
+            let chunker = OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES);
             chunker.chunk_file(file_path, source, None)
         }
     };
@@ -371,9 +374,46 @@ mod tests {
             .iter()
             .find(|chunk| chunk.chunk_kind.as_deref() == Some("Symbol") && chunk.content.contains("pub fn add"))
             .expect("expected a symbol chunk for pub fn add");
-        assert!(chunk.symbol_ids.len() >= 1);
+        assert!(!chunk.symbol_ids.is_empty());
         assert!(chunk.content.starts_with("use std::fmt;\n\n"));
         assert_eq!(chunk.metadata.as_ref().and_then(|meta| meta.get("has_context_prefix")), Some(&serde_json::Value::Bool(true)));
         assert_eq!(chunk.language.as_deref(), Some("rust"));
+    }
+
+    #[cfg(feature = "parsing")]
+    #[test]
+    fn index_path_parallel_groups_related_symbols_semantically() {
+        let dir = tempdir().unwrap();
+        write_file(
+            dir.path(),
+            "src/lib.rs",
+            "pub struct UserService {\n    repo: Repo,\n}\n\nimpl UserService {\n    pub fn new() -> Self {\n        Self { repo: Repo::new() }\n    }\n\n    pub fn add(&self) {\n        println!(\"add\");\n    }\n}\n\nfn unrelated() {}\n",
+        );
+
+        let indexer = Indexer::from_context(build_context());
+        let opts = IndexOptions {
+            max_concurrency: 2,
+            explicit_files: None,
+            extract_imports: false,
+            extract_calls: false,
+        };
+
+        let result = indexer
+            .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
+            .unwrap();
+
+        let grouped = result
+            .chunks
+            .iter()
+            .find(|chunk| chunk.content.contains("pub struct UserService") && chunk.content.contains("pub fn add"))
+            .expect("expected a semantic chunk grouping the related symbols");
+
+        assert_eq!(grouped.chunk_kind.as_deref(), Some("Symbol"));
+        assert_eq!(grouped.metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
+        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()) == Some(1));
+        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("next_chunk_id")).and_then(|value| value.as_str()).map(|value| value.starts_with("chk-sem-")).unwrap_or(false));
+        assert!(grouped.symbol_ids.len() >= 3);
+        assert!(grouped.content.contains("impl UserService"));
+        assert!(result.chunks.iter().any(|chunk| chunk.symbol_ids == vec!["<source>:unrelated".to_string()] || chunk.content.contains("fn unrelated")));
     }
 }
