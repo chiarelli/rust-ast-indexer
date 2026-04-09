@@ -1,5 +1,8 @@
 pub mod dispatcher;
 
+#[cfg(test)]
+mod __testes__;
+
 use serde_json::json;
 use std::io::{self, BufRead};
 use std::thread;
@@ -73,7 +76,7 @@ pub fn run_cli(ctx: Arc<ApplicationContext>) {
 }
 
 #[allow(dead_code)]
-fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
+pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
     match cmd.command.as_str() {
         "list_languages" => {
             let languages = ctx.registry.list_languages();
@@ -561,12 +564,15 @@ impl CmdExt for Command {
 }
 
 #[cfg(test)]
-mod tests {
+mod cli_tests {
     use super::*;
     use crate::app::test_bootstrap::test_context;
     use crate::application::protocol::Command;
     use serde_json::json;
     use std::{thread, time::Duration};
+
+    // These tests specifically exercise handle_command, not the dispatcher.
+    // The dispatcher is tested in dispatcher_integration.rs
 
     #[test]
     fn handle_command_list_languages_emits_capabilities() {
