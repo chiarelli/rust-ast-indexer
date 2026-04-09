@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 use crate::app::bootstrap::ApplicationContext;
-use crate::application::chunking::{ChunkStrategy, ContextInjectionChunker, SemanticChunker};
+use crate::application::chunking::{ChunkStrategy, ContextInjectionChunker, OverlapChunker, SemanticChunker};
 use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord, Symbol};
 use crate::infra::parser_pool::ParserPool;
@@ -204,6 +204,7 @@ impl Indexer {
 }
 
 const APPROX_TOKEN_LIMIT: usize = 200;
+const OVERLAP_LINES: usize = 1;
 
 fn chunk_file_contents(
     file_path: &str,
@@ -230,11 +231,11 @@ fn chunk_file_contents(
 
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
-            let decorated = ContextInjectionChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT));
+            let decorated = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT), OVERLAP_LINES));
             decorated.chunk_file(file_path, source, Some(syms))
         }
         _ => {
-            let chunker = SemanticChunker::new(APPROX_TOKEN_LIMIT);
+            let chunker = OverlapChunker::new(SemanticChunker::new(APPROX_TOKEN_LIMIT), OVERLAP_LINES);
             chunker.chunk_file(file_path, source, None)
         }
     };
@@ -409,6 +410,7 @@ mod tests {
 
         assert_eq!(grouped.chunk_kind.as_deref(), Some("Symbol"));
         assert_eq!(grouped.metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
+        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()) == Some(1));
         assert!(grouped.symbol_ids.len() >= 3);
         assert!(grouped.content.contains("impl UserService"));
         assert!(result.chunks.iter().any(|chunk| chunk.symbol_ids == vec!["<source>:unrelated".to_string()] || chunk.content.contains("fn unrelated")));
