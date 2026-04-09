@@ -10,7 +10,7 @@ use crate::infra::jsonl;
 
 use std::sync::Arc;
 
-use crate::app::bootstrap::{ApplicationContext, Config, init_context};
+use crate::app::bootstrap::{init_context, ApplicationContext, Config};
 
 pub fn run_cli_default() {
     let cfg = Config::load();
@@ -70,7 +70,6 @@ pub fn run_cli(ctx: Arc<ApplicationContext>) {
     // Give spawned background job threads a short grace period to emit events before exiting.
     // This keeps the binary usable as a short-lived child process in smoke tests.
     std::thread::sleep(std::time::Duration::from_millis(100));
-
 }
 
 #[allow(dead_code)]
@@ -129,6 +128,12 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 jsonl::write_event(&ev);
                 return;
             }
+            let chunking_opts = payload
+                .get("options")
+                .and_then(|o| o.get("chunking"))
+                .and_then(|c| serde_json::from_value(c.clone()).ok())
+                .unwrap_or_default();
+
             let opts = IndexOptions {
                 max_concurrency: payload
                     .get("options")
@@ -147,6 +152,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|o| o.get("extract_calls"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
+                chunking: chunking_opts,
             };
 
             thread::spawn(move || {
@@ -304,7 +310,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     r#type: "event".into(),
                                     event: "error".into(),
                                     job_id: Some(job_id.clone()),
-                                    payload: Some(json!({"code":"GIT_ERROR","message":format!("git diff failed: {:?}", e),"recoverable":false})),
+                                    payload: Some(
+                                        json!({"code":"GIT_ERROR","message":format!("git diff failed: {:?}", e),"recoverable":false}),
+                                    ),
                                 };
                                 jsonl::write_event(&ev);
                                 let ev_done = Event {
@@ -312,7 +320,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     r#type: "event".into(),
                                     event: "job_completed".into(),
                                     job_id: Some(job_id.clone()),
-                                    payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                                    payload: Some(
+                                        json!({"processed": 0, "duration_ms": 0, "errors": 1}),
+                                    ),
                                 };
                                 jsonl::write_event(&ev_done);
                                 return;
@@ -328,7 +338,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     r#type: "event".into(),
                                     event: "error".into(),
                                     job_id: Some(job_id.clone()),
-                                    payload: Some(json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false})),
+                                    payload: Some(
+                                        json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false}),
+                                    ),
                                 };
                                 jsonl::write_event(&ev);
                                 let ev_done = Event {
@@ -336,7 +348,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     r#type: "event".into(),
                                     event: "job_completed".into(),
                                     job_id: Some(job_id.clone()),
-                                    payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                                    payload: Some(
+                                        json!({"processed": 0, "duration_ms": 0, "errors": 1}),
+                                    ),
                                 };
                                 jsonl::write_event(&ev_done);
                                 return;
@@ -352,7 +366,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 r#type: "event".into(),
                                 event: "error".into(),
                                 job_id: Some(job_id.clone()),
-                                payload: Some(json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false})),
+                                payload: Some(
+                                    json!({"code":"GIT_ERROR","message":format!("git ls-files failed: {:?}", e),"recoverable":false}),
+                                ),
                             };
                             jsonl::write_event(&ev);
                             let ev_done = Event {
@@ -360,7 +376,9 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 r#type: "event".into(),
                                 event: "job_completed".into(),
                                 job_id: Some(job_id.clone()),
-                                payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
+                                payload: Some(
+                                    json!({"processed": 0, "duration_ms": 0, "errors": 1}),
+                                ),
                             };
                             jsonl::write_event(&ev_done);
                             return;
@@ -382,6 +400,12 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 }
             }
 
+            let chunking_opts = payload
+                .get("options")
+                .and_then(|o| o.get("chunking"))
+                .and_then(|c| serde_json::from_value(c.clone()).ok())
+                .unwrap_or_default();
+
             let opts = IndexOptions {
                 max_concurrency: payload
                     .get("options")
@@ -400,6 +424,7 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|o| o.get("extract_calls"))
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
+                chunking: chunking_opts,
             };
 
             thread::spawn(move || {
@@ -413,10 +438,25 @@ fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 jsonl::write_event(&ev_start);
 
                 if let Some(ref files) = opts.explicit_files {
-                    crate::infra::walker::emit_file_listed_from_records(&files.iter().map(|p| crate::domain::types::FileRecord { path: p.clone(), size: 0, mtime: 0, hash: "".to_string(), language: None }).collect::<Vec<_>>(), Some(job_id.clone()));
+                    crate::infra::walker::emit_file_listed_from_records(
+                        &files
+                            .iter()
+                            .map(|p| crate::domain::types::FileRecord {
+                                path: p.clone(),
+                                size: 0,
+                                mtime: 0,
+                                hash: "".to_string(),
+                                language: None,
+                            })
+                            .collect::<Vec<_>>(),
+                        Some(job_id.clone()),
+                    );
                 } else {
                     let scan_opts = crate::infra::walker::ScanOptions::new(&path);
-                    let _ = crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
+                    let _ = crate::infra::walker::emit_file_listed_events(
+                        &scan_opts,
+                        Some(job_id.clone()),
+                    );
                 }
 
                 let indexer = Indexer::from_context(ctx.clone());
