@@ -3,6 +3,18 @@ use std::collections::HashMap;
 use crate::application::chunking::{apply_token_count, ChunkStrategy};
 use crate::domain::types::{Chunk, Symbol};
 
+#[derive(Debug)]
+struct FlushGroupParams<'a> {
+    file_path: &'a str,
+    source: &'a str,
+    chunks: &'a mut Vec<Chunk>,
+    group: Vec<Symbol>,
+    start_line: usize,
+    end_line: usize,
+    group_key: Option<&'a str>,
+    max_lines: usize,
+}
+
 pub struct SemanticChunker {
     pub max_lines: usize,
     semantic_gap_lines: usize,
@@ -59,10 +71,10 @@ impl ChunkStrategy for SemanticChunker {
 
             let next_end = current_end.max(symbol.end_line);
             let next_lines = next_end.saturating_sub(current_start) + 1;
-            let same_group = current_key.as_ref().zip(symbol_key.as_ref()).map_or(false, |(a, b)| a == b);
+            let same_group = current_key.as_ref().zip(symbol_key.as_ref()).is_some_and(|(a, b)| a == b);
             let close_enough = symbol.start_line <= current_end.saturating_add(self.semantic_gap_lines);
             let fits_limit = self.max_lines == 0 || next_lines <= self.max_lines;
-            let within_anchor = current_anchor_end.map_or(false, |anchor_end| {
+            let within_anchor = current_anchor_end.is_some_and(|anchor_end| {
                 is_member_symbol(&symbol) && symbol.end_line <= anchor_end
             });
 
@@ -71,16 +83,16 @@ impl ChunkStrategy for SemanticChunker {
                 current_anchor_end = current_anchor_end.map(|anchor_end| anchor_end.max(symbol.end_line));
                 current_group.push(symbol);
             } else {
-                flush_group(
+                flush_group(FlushGroupParams {
                     file_path,
                     source,
-                    &mut chunks,
-                    std::mem::take(&mut current_group),
-                    current_start,
-                    current_end,
-                    current_key.as_deref(),
-                    self.max_lines,
-                );
+                    chunks: &mut chunks,
+                    group: std::mem::take(&mut current_group),
+                    start_line: current_start,
+                    end_line: current_end,
+                    group_key: current_key.as_deref(),
+                    max_lines: self.max_lines,
+                });
                 current_start = symbol.start_line;
                 current_end = symbol.end_line;
                 current_anchor_end = is_anchor_symbol(&symbol).then_some(symbol.end_line);
@@ -90,16 +102,16 @@ impl ChunkStrategy for SemanticChunker {
         }
 
         if !current_group.is_empty() {
-            flush_group(
+            flush_group(FlushGroupParams {
                 file_path,
                 source,
-                &mut chunks,
-                current_group,
-                current_start,
-                current_end,
-                current_key.as_deref(),
-                self.max_lines,
-            );
+                chunks: &mut chunks,
+                group: current_group,
+                start_line: current_start,
+                end_line: current_end,
+                group_key: current_key.as_deref(),
+                max_lines: self.max_lines,
+            });
         }
 
         chunks
@@ -134,32 +146,23 @@ fn build_full_file_chunk(file_path: &str, source: &str, max_lines: usize) -> Chu
     }
 }
 
-fn flush_group(
-    file_path: &str,
-    source: &str,
-    chunks: &mut Vec<Chunk>,
-    group: Vec<Symbol>,
-    start_line: usize,
-    end_line: usize,
-    group_key: Option<&str>,
-    max_lines: usize,
-) {
-    if group.is_empty() {
+fn flush_group(params: FlushGroupParams) {
+    if params.group.is_empty() {
         return;
     }
 
-    let content = lines_to_string(source, start_line, end_line);
-    let symbol_ids = group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
+    let content = lines_to_string(params.source, params.start_line, params.end_line);
+    let symbol_ids = params.group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
     let symbol_id = symbol_ids.first().cloned();
     let mut metadata = HashMap::from([
         ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
         (
             "max_line_limit".to_string(),
-            serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
+            serde_json::Value::Number(serde_json::Number::from(params.max_lines as u64)),
         ),
     ]);
 
-    if let Some(key) = group_key {
+    if let Some(key) = params.group_key {
         metadata.insert("semantic_key".to_string(), serde_json::Value::String(key.to_string()));
     }
 
@@ -169,14 +172,14 @@ fn flush_group(
     );
     apply_token_count(&mut metadata, &content);
 
-    let digest_input = format!("{}:{}:{}:{}", file_path, start_line, end_line, symbol_ids.join("|"));
+    let digest_input = format!("{}:{}:{}:{}", params.file_path, params.start_line, params.end_line, symbol_ids.join("|"));
     let digest = blake3::hash(digest_input.as_bytes()).to_hex().to_string();
 
-    chunks.push(Chunk {
+    params.chunks.push(Chunk {
         id: format!("chk-sem-{}", digest),
-        file_path: file_path.to_string(),
-        start_line,
-        end_line,
+        file_path: params.file_path.to_string(),
+        start_line: params.start_line,
+        end_line: params.end_line,
         content: content.clone(),
         text: content.clone(),
         md5: digest,
