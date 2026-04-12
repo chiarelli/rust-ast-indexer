@@ -8,14 +8,14 @@ Implementar mecanismo de backpressure com eventos de `pause` e `resume` para con
 
 ## Fases e tarefas
 
-### fase-1: definição do protocolo e modelo — PENDENTE
+### fase-1: definição do protocolo e modelo — ✅ CONCLUÍDA
 
 | Status | Task | Atividade | Commits |
 |---|---|---|---|
-| ❌ | domain/protocol | adicionar eventos `pause` e `resume` ao schema JSONL | — |
-| ❌ | domain/protocol | testes unitários para tipos de evento | — |
-| ❌ | infra/backpressure | definir `BackpressureConfig` com `max_queue_size` e `ack_required` | — |
-| ❌ | doc | atualizar `doc/protocol.md` com exemplos de eventos `pause` e `resume` | — |
+| ✅ | domain/protocol | adicionar eventos `pause` e `resume` ao schema JSONL | — |
+| ✅ | domain/protocol | testes unitários para tipos de evento | — |
+| ✅ | infra/backpressure | definir `BackpressureConfig` com `max_queue_size` e `ack_required` | — |
+| ✅ | doc | atualizar `doc/protocol.md` com exemplos de eventos `pause` e `resume` | — |
 
 ### fase-2: implementação no pipeline — PENDENTE
 
