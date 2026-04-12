@@ -1,4 +1,4 @@
-use crate::application::protocol::{Command, Event, ChunkEventPayload};
+use crate::application::protocol::{ChunkEventPayload, Command, Event};
 use crate::domain::types::{CallEdge, ImportEdge};
 
 pub fn write_event(e: &Event) {
@@ -55,9 +55,56 @@ pub fn read_command(line: &str) -> Option<Command> {
     serde_json::from_str(line).ok()
 }
 
+// Backpressure events
+pub fn build_pause_event(job_id: Option<String>) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "pause".into(),
+        job_id,
+        payload: None,
+    }
+}
+
+pub fn write_pause_event(job_id: Option<String>) {
+    let ev = build_pause_event(job_id);
+    write_event(&ev);
+}
+
+pub fn build_resume_event(job_id: Option<String>) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "resume".into(),
+        job_id,
+        payload: None,
+    }
+}
+
+pub fn write_resume_event(job_id: Option<String>) {
+    let ev = build_resume_event(job_id);
+    write_event(&ev);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn build_pause_event_contains_metadata() {
+        let ev = build_pause_event(Some("job-1".into()));
+        assert_eq!(ev.event, "pause");
+        assert_eq!(ev.job_id.as_deref(), Some("job-1"));
+        assert!(ev.payload.is_none());
+    }
+
+    #[test]
+    fn build_resume_event_contains_metadata() {
+        let ev = build_resume_event(Some("job-1".into()));
+        assert_eq!(ev.event, "resume");
+        assert_eq!(ev.job_id.as_deref(), Some("job-1"));
+        assert!(ev.payload.is_none());
+    }
 
     #[test]
     fn build_chunk_event_contains_payload_and_metadata() {
