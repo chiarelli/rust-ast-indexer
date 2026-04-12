@@ -1,20 +1,22 @@
-//! Backpressure control for the indexing pipeline.
+//! Controle de backpressure para o pipeline de indexação.
 //!
-//! This module provides configuration and utilities for managing backpressure
-//! when the output queue reaches capacity limits.
+//! Este módulo fornece configuração e monitoramento para gerenciar backpressure
+//! quando a fila de saída atinge limites de capacidade.
 
 use serde::{Deserialize, Serialize};
 
-/// Errors that can occur during backpressure configuration.
+mod monitor;
+
+/// Erros que podem ocorrer durante configuração de backpressure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackpressureConfigError {
-    /// Queue size must be a positive value.
+    /// Tamanho da fila deve ser um valor positivo.
     InvalidQueueSize(String),
 
-    /// Threshold value (80-99) is invalid.
+    /// Valor do limiar (80-99) é inválido.
     InvalidThreshold(String),
 
-    /// Acknowledgment mode requires acknowledgment to be enabled.
+    /// Modo de ACK requer acknowledgment ativado.
     InvalidAckMode(String),
 }
 
@@ -22,13 +24,13 @@ impl std::fmt::Display for BackpressureConfigError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             BackpressureConfigError::InvalidQueueSize(msg) => {
-                write!(f, "invalid queue size: {}", msg)
+                write!(f, "tamanho de fila inválido: {}", msg)
             }
             BackpressureConfigError::InvalidThreshold(msg) => {
-                write!(f, "invalid threshold: {}", msg)
+                write!(f, "limiar inválido: {}", msg)
             }
             BackpressureConfigError::InvalidAckMode(msg) => {
-                write!(f, "invalid acknowledgment mode: {}", msg)
+                write!(f, "modo de acknowledgment inválido: {}", msg)
             }
         }
     }
@@ -36,7 +38,7 @@ impl std::fmt::Display for BackpressureConfigError {
 
 impl std::error::Error for BackpressureConfigError {}
 
-/// Reason for emitting a pause event.
+/// Razão para emitir evento de pause.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PauseReason {
@@ -45,7 +47,7 @@ pub enum PauseReason {
     ExternalSignal,
 }
 
-/// Reason for emitting a resume event.
+/// Razão para emitir evento de resume.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ResumeReason {
@@ -53,33 +55,68 @@ pub enum ResumeReason {
     ExternalSignal,
 }
 
-/// Configuration for backpressure control.
+/// Alias para JobId (já existe como Option<String> em protocol.rs)
+pub type JobId = Option<String>;
+
+/// Payload comum para eventos de pause e resume.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PauseResumePayload {
+    /// Razão do evento.
+    #[serde(flatten)]
+    pub reason: PauseResumeReason,
+    /// Limite que foi atingido ou abaixo do qual resume é ativado.
+    pub threshold: usize,
+    /// Tamanho atual da fila.
+    pub current_size: usize,
+    /// Estado atual de backpressure.
+    pub backpressure_active: bool,
+}
+
+/// Tipo para representar Either<PauseReason, ResumeReason>.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum PauseResumeReason {
+    Pause(PauseReason),
+    Resume(ResumeReason),
+}
+
+impl PauseResumeReason {
+    /// Retorna o nome do tipo (pause ou resume).
+    pub fn kind(&self) -> &'static str {
+        match self {
+            PauseResumeReason::Pause(_) => "pause",
+            PauseResumeReason::Resume(_) => "resume",
+        }
+    }
+}
+
+/// Configuração para controle de backpressure.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackpressureConfig {
-    /// Maximum size of the output queue before triggering backpressure.
+    /// Tamanho máximo da fila de saída antes de acionar backpressure.
     ///
-    /// Default: 500 events
+    /// Padrão: 500 eventos
     #[serde(default = "default_max_queue_size")]
     pub max_queue_size: usize,
 
-    /// Percentage of max_queue_size below which resume is triggered.
+    /// Porcentagem de max_queue_size abaixo da qual resume é ativado.
     ///
-    /// Range: 80-99 (exclusive).
+    /// Intervalo: 80-99 (exclusivo).
     ///
-    /// Default: 90
+    /// Padrão: 90
     #[serde(default = "default_threshold_percent")]
     pub threshold_percent: u8,
 
-    /// Whether the resume event requires acknowledgment from the consumer.
+    /// Se o evento resume requer acknowledgment do consumidor.
     ///
-    /// If `true`, the consumer must explicitly acknowledge before processing resumes.
-    /// Default: `false` (unidirectional notification)
+    /// Se `true`, o consumidor deve confirmar explicitamente antes de processar resumes.
+    /// Padrão: `false` (notificação unidirecional)
     #[serde(default = "default_ack_required")]
     pub ack_required: bool,
 
-    /// Maximum duration of pause state before automatic recovery.
+    /// Duração máxima do estado de pausa antes de recuperação automática.
     ///
-    /// Default: 5 minutes
+    /// Padrão: 5 minutos
     #[serde(default = "default_pause_timeout")]
     pub pause_timeout_secs: u64,
 }
@@ -112,11 +149,11 @@ impl Default for BackpressureConfig {
 }
 
 impl BackpressureConfig {
-    /// Creates a new `BackpressureConfig` with the given maximum queue size.
+    /// Cria uma nova `BackpressureConfig` com o tamanho máximo de fila dado.
     pub fn with_max_queue_size(size: usize) -> Result<Self, BackpressureConfigError> {
         if size == 0 {
             return Err(BackpressureConfigError::InvalidQueueSize(
-                "queue size must be greater than zero".to_string(),
+                "tamanho de fila deve ser maior que zero".to_string(),
             ));
         }
         Ok(Self {
@@ -125,39 +162,39 @@ impl BackpressureConfig {
         })
     }
 
-    /// Validates all fields of the configuration.
+    /// Valida todos os campos da configuração.
     pub fn validate(&self) -> Result<(), BackpressureConfigError> {
         if self.max_queue_size == 0 {
             return Err(BackpressureConfigError::InvalidQueueSize(
-                "max_queue_size must be positive".to_string(),
+                "max_queue_size deve ser positivo".to_string(),
             ));
         }
 
         if !(80..=99).contains(&self.threshold_percent) {
             return Err(BackpressureConfigError::InvalidThreshold(
-                "threshold_percent must be between 80 and 99".to_string(),
+                "threshold_percent deve estar entre 80 e 99".to_string(),
             ));
         }
 
         Ok(())
     }
 
-    /// Calculates the resume threshold based on max_queue_size and threshold_percent.
+    /// Calcula o limiar de resume baseado em max_queue_size e threshold_percent.
     pub fn resume_threshold(&self) -> usize {
         (self.max_queue_size * (self.threshold_percent as usize)) / 100
     }
 
-    /// Checks if the current queue size should trigger backpressure.
+    /// Verifica se o tamanho atual da fila deve acionar backpressure.
     pub fn should_pause(&self, current_size: usize) -> bool {
         current_size >= self.max_queue_size
     }
 
-    /// Checks if the current queue size should allow resuming.
+    /// Verifica se o tamanho atual da fila deve permitir retomar.
     pub fn should_resume(&self, current_size: usize) -> bool {
         current_size < self.resume_threshold()
     }
 
-    /// Creates a pause reason based on queue state.
+    /// Cria uma razão de pause baseada no estado da fila.
     pub fn pause_reason_for_size(&self, current_size: usize) -> PauseReason {
         if current_size >= self.max_queue_size {
             PauseReason::OutputQueueFull

@@ -86,6 +86,37 @@ pub fn write_resume_event(job_id: Option<String>) {
     write_event(&ev);
 }
 
+// Backpressure events with payload
+pub fn build_pause_event_with_payload(job_id: Option<String>, payload: serde_json::Value) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "pause".into(),
+        job_id,
+        payload: Some(payload),
+    }
+}
+
+pub fn write_pause_event_with_payload(job_id: Option<String>, payload: serde_json::Value) {
+    let ev = build_pause_event_with_payload(job_id, payload);
+    write_event(&ev);
+}
+
+pub fn build_resume_event_with_payload(job_id: Option<String>, payload: serde_json::Value) -> Event {
+    Event {
+        protocol_version: "1.0.0".into(),
+        r#type: "event".into(),
+        event: "resume".into(),
+        job_id,
+        payload: Some(payload),
+    }
+}
+
+pub fn write_resume_event_with_payload(job_id: Option<String>, payload: serde_json::Value) {
+    let ev = build_resume_event_with_payload(job_id, payload);
+    write_event(&ev);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
