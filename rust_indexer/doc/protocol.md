@@ -303,3 +303,186 @@ Emitido quando o adapter detecta uma chamada de função/método durante o parsi
 **Notas:**
 - `resolved=false` na V1 — resolução de `callee_symbol_id` requer análise interprocedural futura.
 - `call_kind=dynamic` para chamadas via index access (`a[b]()`) ou import dinâmico (`import("module")`).
+
+## Eventos de Backpressure — `pause` e `resume`
+
+### `pause`
+
+Emitido automaticamente pela engine quando o queue size de output atinge `max_queue_size` configured no backpressure control.
+
+**Schema:**
+```json
+{
+  "type": "event",
+  "event": "pause",
+  "job_id": "<string>",
+  "payload": {
+    "reason": "output_queue_full|queue_near_capacity|external_signal",
+    "threshold": <int>,
+    "current_size": <int>,
+    "backpressure_active": true
+  }
+}
+```
+
+**Campos do payload:**
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `reason` | String | Motivo do `pause`: |
+| | | - `output_queue_full`: size alcançou `max_queue_size` |
+| | | - `queue_near_capacity`: size > 95% do threshold |
+| | | - `external_signal`: comando externo solicitando pausa |
+| `threshold` | Inteiro | Valor configurado de `max_queue_size` |
+| `current_size` | Inteiro | Tamanho atual da fila de eventos |
+| `backpressure_active` | Bool | Sempre `true` neste evento |
+
+**Exemplo:**
+```json
+{ "type": "event", "event": "pause", "job_id": "job-123", "payload": {
+  "reason": "output_queue_full",
+  "threshold": 500,
+  "current_size": 501,
+  "backpressure_active": true
+}}
+```
+
+### `resume`
+
+Emitido automaticamente pela engine quando o queue size cai abaixo do `threshold_percent` (90% padrão do `max_queue_size`).
+
+**Schema:**
+```json
+{
+  "type": "event",
+  "event": "resume",
+  "job_id": "<string>",
+  "payload": {
+    "reason": "queue_under_threshold|external_signal",
+    "threshold": <int>,
+    "current_size": <int>,
+    "backpressure_active": false
+  }
+}
+```
+
+**Campos do payload:**
+| Campo | Tipo | Descrição |
+|-------|------|-----------|
+| `reason` | String | Motivo do `resume`: |
+| | | - `queue_under_threshold`: size < 90% do `max_queue_size` |
+| | | - `external_signal`: comando externo solicitando retomar |
+| `threshold` | Inteiro | Valor 90% de `max_queue_size` onde resume é acionado |
+| `current_size` | Inteiro | Tamanho atual da fila de eventos |
+| `backpressure_active` | Bool | Sempre `false` neste evento |
+
+**Exemplo:**
+```json
+{ "type": "event", "event": "resume", "job_id": "job-123", "payload": {
+  "reason": "queue_under_threshold",
+  "threshold": 450,
+  "current_size": 449,
+  "backpressure_active": false
+}}
+```
+
+### Configuração de Backpressure na V1
+
+Para configurar backpressure em comandos como `index_path`, inclua o objeto `backpressure` nas opções:
+
+```json
+{
+  "protocol_version": "1.0.0",
+  "type": "command",
+  "command": "index_path",
+  "seq": 1,
+  "job_id": "job-123",
+  "payload": {
+    "path": "/repo",
+    "language": "rust",
+    "options": {
+      "max_concurrency": 4,
+      "backpressure": {
+        "max_queue_size": 500,
+        "threshold_percent": 90,
+        "ack_required": false,
+        "pause_timeout_secs": 300
+      }
+    }
+  }
+}
+```
+
+**Parâmetros de configuração:**
+
+| Parâmetro | Tipo | Valor Padrão | Fa Válida | Descrição |
+|-----------|------|--------------|-----------|-----------|
+| `max_queue_size` | Inteiro | 500 | > 0 | Tamanho máximo da fila antes de triggers `pause` |
+| `threshold_percent` | Inteiro | 90 | 80-99% | Porcentagem para triggers `resume` (exceção: 100% = imediatamente ao iniciar) |
+| `ack_required` | Bool | `false` | - | Se `true`, consome deve ACK manualmente antes de `resume` ser eficaz |
+| `pause_timeout_secs` | Inteiro | 300 | > 0 | Auto-resume após este tempo de `pause` sustentado |
+
+### Fluxo de Backpressure
+
+1. Engine monitora tamanho da output queue
+2. Quando `size >= max_queue_size`:
+   - Emite evento `pause` com `reason: output_queue_full`
+   - Para de processar novos eventos
+3. Quando `size < threshold_percent % of max_queue_size`:
+   - Emite evento `resume` com `reason: queue_under_threshold`
+   - Retoma processamento
+4. Se `ack_required=true`, engine aguarda comando externo `resume` ou ACK explícito
+
+### Semântica de `ack_required`
+
+- `false` (padrão): `pause`/`resume` são notificações unidirecionais; engine decide automaticamente quando retomar
+- `true`: engine requer confirmação explícita (comando `resume` ou ACK) antes de processar após `pause`
+
+### Uso em CLI
+
+O `pause` pode ser acionado via:
+
+```json
+{
+  "command": "index_path",
+  "payload": {
+    "path": "/repo",
+    "options": {
+      "max_concurrency": 4,
+      "backpressure": {
+        "max_queue_size": 1000,
+        "ack_required": false
+      }
+    }
+  }
+}
+```
+
+ou via `incremental_index` com opção equivalente.
+
+### Observabilidade
+
+- Um `resume` sem `pause` anterior pode indicar perda de eventos ou configuração excessivamente conservadora
+- Logs de `pause`/`resume` devem ser correlacionados com timestamps para análise de performance
+- Valores de `threshold_percent` muito baixos (80-85%) podem causar oscilações frequentes (flapping)
+- Valores muito altos (95-99%) podem causar fila constantemente cheia
+
+### Valores Recomendados
+
+```
+┌─────────────────────┬────────────────────────────┐
+│ Configuração        │ Uso Recomendado            │
+├─────────────────────┼────────────────────────────┤
+│ max_queue_size: 500 │ Dev environments, baixo    │
+│ threshold_percent:  │ tráfego                   │
+│ 90                  │                            │
+├─────────────────────┼────────────────────────────┤
+│ max_queue_size: 2000│ Production, altoThroughput │
+│ threshold_percent:  │                            │
+│ 85                  │                            │
+├─────────────────────┼────────────────────────────┤
+│ max_queue_size: 5000│ Batch indexing, recursos   │
+│ threshold_percent:  │ abundantes                │
+│ 80                  │                            │
+└─────────────────────┴────────────────────────────┘
+```
+
