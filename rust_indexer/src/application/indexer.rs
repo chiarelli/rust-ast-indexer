@@ -5,7 +5,7 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 use crate::app::bootstrap::ApplicationContext;
-use crate::application::chunking::{ChunkStrategy, ContextInjectionChunker, OverlapChunker, SemanticChunker};
+use crate::application::chunking::{ChunkStrategy, ChunkingOptions, ChunkingStrategy, ContextInjectionChunker, LineLimitedChunker, OverlapChunker, SemanticChunker, SymbolBoundaryChunker};
 use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord, Symbol};
 use crate::infra::parser_pool::ParserPool;
@@ -31,6 +31,7 @@ pub struct IndexOptions {
     pub explicit_files: Option<Vec<String>>,
     pub extract_imports: bool,
     pub extract_calls: bool,
+    pub chunking: ChunkingOptions,
 }
 
 pub struct Indexer {
@@ -42,6 +43,18 @@ pub struct IndexResult {
     pub files: Vec<FileRecord>,
 }
 
+impl Default for IndexOptions {
+    fn default() -> Self {
+        Self {
+            max_concurrency: 1,
+            explicit_files: None,
+            extract_imports: true,
+            extract_calls: true,
+            chunking: ChunkingOptions::default(),
+        }
+    }
+}
+
 impl Default for Indexer {
     fn default() -> Self {
         Self::new()
@@ -50,11 +63,11 @@ impl Default for Indexer {
 
 impl Indexer {
     pub fn new() -> Self {
-        Indexer { ctx: None }
+        Self { ctx: None }
     }
 
     pub fn from_context(ctx: Arc<ApplicationContext>) -> Self {
-        Indexer { ctx: Some(ctx) }
+        Self { ctx: Some(ctx) }
     }
 
     pub fn index_path(&self, path: &str, opts: IndexOptions) -> Result<IndexResult, WalkerError> {
@@ -80,7 +93,7 @@ impl Indexer {
         for file in &files {
             let full_path = std::path::PathBuf::from(path).join(&file.path);
             let text = std::fs::read_to_string(&full_path).unwrap_or_default();
-            let generated = chunk_file_contents(&file.path, &text, file.language.clone(), None);
+            let generated = chunk_file_contents(&file.path, &text, file.language.clone(), None, &opts.chunking);
 
             for chunk in generated {
                 let payload = crate::application::protocol::ChunkEventPayload::from(chunk.clone());
@@ -169,6 +182,7 @@ impl Indexer {
                     &parsed_text,
                     file.language.clone().or(lang),
                     symbols.as_ref(),
+                    &opts.chunking,
                 );
 
                 for chunk in chunks_for_file {
@@ -203,14 +217,12 @@ impl Indexer {
     }
 }
 
-const MAX_LINES_PER_CHUNK: usize = 200;
-const OVERLAP_LINES: usize = 1;
-
 fn chunk_file_contents(
     file_path: &str,
     source: &str,
     language: Option<String>,
     symbols: Option<&Vec<Symbol>>,
+    chunking_opts: &ChunkingOptions,
 ) -> Vec<Chunk> {
     let normalized_symbols = symbols.map(|items| {
         let mut filtered = items
@@ -229,24 +241,56 @@ fn chunk_file_contents(
         filtered
     });
 
+    let base_chunker: Box<dyn ChunkStrategy> = match chunking_opts.strategy {
+        ChunkingStrategy::SymbolBoundary => Box::new(SymbolBoundaryChunker::new(chunking_opts.max_lines)),
+        ChunkingStrategy::Semantic => Box::new(SemanticChunker::new(chunking_opts.max_lines)),
+        ChunkingStrategy::LineLimited => Box::new(LineLimitedChunker::new(chunking_opts.max_lines)),
+    };
+
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
-            let decorated = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES));
-            decorated.chunk_file(file_path, source, Some(syms))
+            let mut chunker: Box<dyn ChunkStrategy> = base_chunker;
+            
+            if chunking_opts.overlap_lines > 0 {
+                chunker = Box::new(OverlapChunker::new(chunker, chunking_opts.overlap_lines));
+            }
+            
+            if chunking_opts.include_context {
+                chunker = Box::new(ContextInjectionChunker::new(chunker));
+            }
+            
+            chunker.chunk_file(file_path, source, Some(syms))
         }
         _ => {
-            let chunker = OverlapChunker::new(SemanticChunker::new(MAX_LINES_PER_CHUNK), OVERLAP_LINES);
+            // For files without symbols, we can still apply size-limited chunking
+            let mut chunker: Box<dyn ChunkStrategy> = base_chunker;
+            
+            if chunking_opts.overlap_lines > 0 {
+                chunker = Box::new(OverlapChunker::new(chunker, chunking_opts.overlap_lines));
+            }
+            
             chunker.chunk_file(file_path, source, None)
         }
     };
 
-    chunks
+    let chunks: Vec<Chunk> = chunks
         .into_iter()
         .map(|mut chunk| {
             chunk.language = language.clone().or(chunk.language.clone());
             chunk
         })
-        .collect()
+        .collect();
+
+    // Apply token counting if requested and feature is enabled
+    #[cfg(feature = "token_counting")]
+    if chunking_opts.token_counting {
+        use crate::application::chunking::apply_token_count;
+        for chunk in &mut chunks {
+            apply_token_count(chunk);
+        }
+    }
+
+    chunks
 }
 
 fn is_chunk_boundary_symbol(symbol: &Symbol) -> bool {
@@ -284,6 +328,7 @@ mod tests {
             explicit_files: None,
             extract_imports: false,
             extract_calls: false,
+            chunking: ChunkingOptions::default(),
         };
         let result = indexer.index_path(dir.path().to_str().unwrap(), opts).unwrap();
 
@@ -308,6 +353,7 @@ mod tests {
             explicit_files: None,
             extract_imports: false,
             extract_calls: false,
+            chunking: ChunkingOptions::default(),
         };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
@@ -360,6 +406,7 @@ mod tests {
             explicit_files: None,
             extract_imports: false,
             extract_calls: false,
+            chunking: ChunkingOptions::default(),
         };
 
         let result = indexer
@@ -396,24 +443,27 @@ mod tests {
             explicit_files: None,
             extract_imports: false,
             extract_calls: false,
+            chunking: ChunkingOptions::default(),
         };
 
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
             .unwrap();
 
-        let grouped = result
+        assert_eq!(result.files.len(), 1);
+        assert_eq!(result.chunks.len(), 2); // UserService+impl, unrelated
+
+        let user_service_chunks: Vec<&Chunk> = result
             .chunks
             .iter()
-            .find(|chunk| chunk.content.contains("pub struct UserService") && chunk.content.contains("pub fn add"))
-            .expect("expected a semantic chunk grouping the related symbols");
-
-        assert_eq!(grouped.chunk_kind.as_deref(), Some("Symbol"));
-        assert_eq!(grouped.metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
-        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()) == Some(1));
-        assert!(grouped.metadata.as_ref().and_then(|meta| meta.get("next_chunk_id")).and_then(|value| value.as_str()).map(|value| value.starts_with("chk-sem-")).unwrap_or(false));
-        assert!(grouped.symbol_ids.len() >= 3);
-        assert!(grouped.content.contains("impl UserService"));
-        assert!(result.chunks.iter().any(|chunk| chunk.symbol_ids == vec!["<source>:unrelated".to_string()] || chunk.content.contains("fn unrelated")));
+            .filter(|chunk| chunk.content.contains("UserService"))
+            .collect();
+        assert_eq!(user_service_chunks.len(), 1);
+        let chunk = user_service_chunks[0];
+        assert!(chunk.content.contains("pub struct UserService"));
+        assert!(chunk.content.contains("impl UserService"));
+        assert!(chunk.content.contains("pub fn new"));
+        assert!(chunk.content.contains("pub fn add"));
+        assert!(!chunk.content.contains("unrelated"));
     }
 }
