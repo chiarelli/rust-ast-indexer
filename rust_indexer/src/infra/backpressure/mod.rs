@@ -6,6 +6,7 @@
 use serde::{Deserialize, Serialize};
 
 mod monitor;
+pub use monitor::BackpressureMonitor;
 
 /// Erros que podem ocorrer durante configuração de backpressure.
 #[derive(Debug, Clone, PartialEq, Eq)]
