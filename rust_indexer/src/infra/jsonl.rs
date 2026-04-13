@@ -284,6 +284,16 @@ pub fn emit_resume_with_backpressure(
     })
 }
 
+/// Emite qualquer evento genérico passando pelo controle de backpressure.
+pub fn emit_event_with_backpressure(
+    monitor: &crate::infra::backpressure::BackpressureMonitor,
+    event: Event,
+) -> Result<(), crate::infra::backpressure::BackpressureConfigError> {
+    emit_with_backpressure(monitor, || event)
+}
+
+/// Emite qualquer evento genérico passando pelo controle de backpressure.
+
 #[cfg(test)]
 mod tests {
     use super::*;
