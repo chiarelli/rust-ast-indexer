@@ -184,8 +184,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 }
 
                 let scan_opts = crate::infra::walker::ScanOptions::new(&path);
-                let _ =
-                    crate::infra::walker::emit_file_listed_events(&scan_opts, Some(job_id.clone()));
+                let _ = crate::infra::walker::emit_file_listed_events(
+                    &scan_opts,
+                    Some(job_id.clone()),
+                    bp_monitor.as_ref(),
+                );
 
                 let indexer = Indexer::from_context(ctx.clone());
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
@@ -503,12 +506,14 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             })
                             .collect::<Vec<_>>(),
                         Some(job_id.clone()),
+                        bp_monitor.as_ref(),
                     );
                 } else {
                     let scan_opts = crate::infra::walker::ScanOptions::new(&path);
                     let _ = crate::infra::walker::emit_file_listed_events(
                         &scan_opts,
                         Some(job_id.clone()),
+                        bp_monitor.as_ref(),
                     );
                 }
 
