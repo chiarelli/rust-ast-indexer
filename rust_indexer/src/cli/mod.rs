@@ -9,7 +9,7 @@ use std::thread;
 
 use crate::application::indexer::{IndexOptions, Indexer};
 use crate::application::protocol::{Command, Event};
-use crate::infra::backpressure::BackpressureConfig;
+use crate::infra::backpressure::{BackpressureConfig, BackpressureMonitor};
 use crate::infra::jsonl;
 
 use std::sync::Arc;
@@ -166,6 +166,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
             };
 
             thread::spawn(move || {
+                let bp_monitor: Option<BackpressureMonitor> = opts.backpressure.as_ref().and_then(|config| BackpressureMonitor::new(config.clone(), 0, Some(job_id.clone())).ok());
                 let ev_start = Event {
                     protocol_version: "1.0.0".into(),
                     r#type: "event".into(),
