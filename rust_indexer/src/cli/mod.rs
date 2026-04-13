@@ -9,6 +9,7 @@ use std::thread;
 
 use crate::application::indexer::{IndexOptions, Indexer};
 use crate::application::protocol::{Command, Event};
+use crate::infra::backpressure::BackpressureConfig;
 use crate::infra::jsonl;
 
 use std::sync::Arc;
@@ -137,6 +138,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 .and_then(|c| serde_json::from_value(c.clone()).ok())
                 .unwrap_or_default();
 
+            let bp_config = payload
+                .get("options")
+                .and_then(|o| o.get("backpressure"))
+                .and_then(|b| serde_json::from_value(b.clone()).ok());
+
             let opts = IndexOptions {
                 max_concurrency: payload
                     .get("options")
@@ -156,6 +162,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
                 chunking: chunking_opts,
+                backpressure: bp_config,
             };
 
             thread::spawn(move || {
@@ -409,6 +416,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 .and_then(|c| serde_json::from_value(c.clone()).ok())
                 .unwrap_or_default();
 
+            let bp_config = payload
+                .get("options")
+                .and_then(|o| o.get("backpressure"))
+                .and_then(|b| serde_json::from_value(b.clone()).ok());
+
             let opts = IndexOptions {
                 max_concurrency: payload
                     .get("options")
@@ -428,6 +440,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .and_then(|v| v.as_bool())
                     .unwrap_or(true),
                 chunking: chunking_opts,
+                backpressure: bp_config,
             };
 
             thread::spawn(move || {

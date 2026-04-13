@@ -9,3 +9,6 @@ rust_indexer/target/
 .project-skills/
 .worktrees/skill/
 .devcontainer/wireguard/
+.kilo/kilo.jsonc
+.kilo/
+.vscode/

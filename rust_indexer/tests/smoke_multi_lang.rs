@@ -1,25 +1,37 @@
-use std::sync::Arc;
-use tempfile::TempDir;
 use rust_indexer::{
-    application::indexer::{Indexer, IndexOptions},
-    application::chunking::ChunkingOptions,
-    infra::parser_pool::ParserPool,
-    app::bootstrap::{ApplicationContext, Registry},
     adapters,
+    app::bootstrap::{ApplicationContext, Registry},
+    application::chunking::ChunkingOptions,
+    application::indexer::{IndexOptions, Indexer},
+    infra::parser_pool::ParserPool,
 };
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use tempfile::TempDir;
 
 fn build_ctx() -> Arc<ApplicationContext> {
     let registry = Arc::new(Registry::new());
     registry.register("rust", Arc::new(adapters::rust::RustAdapter));
-    registry.register("typescript", Arc::new(adapters::typescript::TypeScriptAdapter));
-    registry.register("javascript", Arc::new(adapters::typescript::TypeScriptAdapter));
+    registry.register(
+        "typescript",
+        Arc::new(adapters::typescript::TypeScriptAdapter),
+    );
+    registry.register(
+        "javascript",
+        Arc::new(adapters::typescript::TypeScriptAdapter),
+    );
     registry.register("java", Arc::new(adapters::java::JavaAdapter));
-    
+
     let pool = ParserPool::new();
     pool.register("rust", Arc::new(adapters::rust::RustAdapter));
-    pool.register("typescript", Arc::new(adapters::typescript::TypeScriptAdapter));
-    pool.register("javascript", Arc::new(adapters::typescript::TypeScriptAdapter));
+    pool.register(
+        "typescript",
+        Arc::new(adapters::typescript::TypeScriptAdapter),
+    );
+    pool.register(
+        "javascript",
+        Arc::new(adapters::typescript::TypeScriptAdapter),
+    );
     pool.register("java", Arc::new(adapters::java::JavaAdapter));
 
     let config = rust_indexer::app::bootstrap::Config::new(1, 10);
@@ -82,15 +94,30 @@ fn smoke_multi_lang_produces_symbols_for_all_languages() {
         extract_imports: false,
         extract_calls: false,
         chunking: ChunkingOptions::default(),
+        backpressure: None,
     };
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), opts, None).expect("index should succeed");
+    let res = indexer
+        .index_path_parallel(td.path().to_str().unwrap(), opts, None)
+        .expect("index should succeed");
 
     assert_eq!(res.files.len(), 3, "should list 3 multi-lang files");
     assert!(!res.chunks.is_empty(), "should produce at least one chunk");
 
-    let rust_files: Vec<_> = res.files.iter().filter(|f| f.path.ends_with(".rs")).collect();
-    let ts_files: Vec<_> = res.files.iter().filter(|f| f.path.ends_with(".ts")).collect();
-    let java_files: Vec<_> = res.files.iter().filter(|f| f.path.ends_with(".java")).collect();
+    let rust_files: Vec<_> = res
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".rs"))
+        .collect();
+    let ts_files: Vec<_> = res
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".ts"))
+        .collect();
+    let java_files: Vec<_> = res
+        .files
+        .iter()
+        .filter(|f| f.path.ends_with(".java"))
+        .collect();
 
     assert_eq!(rust_files.len(), 1);
     assert_eq!(ts_files.len(), 1);
@@ -104,9 +131,26 @@ fn smoke_multi_lang_rust_symbols_extracted() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
-    let chunks: Vec<_> = res.chunks.iter().filter(|c| c.text.contains("fn add")).collect();
+    let chunks: Vec<_> = res
+        .chunks
+        .iter()
+        .filter(|c| c.text.contains("fn add"))
+        .collect();
     assert!(!chunks.is_empty(), "should find a chunk with fn add");
 }
 
@@ -117,9 +161,26 @@ fn smoke_multi_lang_ts_symbols_extracted() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
-    let chunks: Vec<_> = res.chunks.iter().filter(|c| c.text.contains("function process") || c.text.contains("class UserService")).collect();
+    let chunks: Vec<_> = res
+        .chunks
+        .iter()
+        .filter(|c| c.text.contains("function process") || c.text.contains("class UserService"))
+        .collect();
     assert!(!chunks.is_empty(), "should find a chunk with TS symbols");
 }
 
@@ -130,19 +191,52 @@ fn smoke_multi_lang_java_symbols_extracted() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
-    let chunks: Vec<_> = res.chunks.iter().filter(|c| c.text.contains("class Repository")).collect();
-    assert!(!chunks.is_empty(), "should find a chunk with class Repository");
+    let chunks: Vec<_> = res
+        .chunks
+        .iter()
+        .filter(|c| c.text.contains("class Repository"))
+        .collect();
+    assert!(
+        !chunks.is_empty(),
+        "should find a chunk with class Repository"
+    );
 }
 
 #[test]
 fn smoke_no_files_produces_empty_results() {
     let td = TempDir::new().expect("tempdir");
-    
+
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert!(res.files.is_empty());
     assert!(res.chunks.is_empty());
@@ -157,11 +251,27 @@ fn smoke_only_unsupported_files_skipped() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     // Walker returns all text files, but unsupported languages have no chunk language
     let supported: Vec<_> = res.chunks.iter().filter(|c| c.language.is_some()).collect();
-    assert!(supported.is_empty(), "no supported-language chunks for unsupported files");
+    assert!(
+        supported.is_empty(),
+        "no supported-language chunks for unsupported files"
+    );
 }
 
 #[test]
@@ -173,10 +283,27 @@ fn smoke_mixed_supported_unsupported_only_processes_supported() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert_eq!(res.files.len(), 3, "3 files listed (including .py)");
-    let supported_chunks: Vec<_> = res.chunks.iter().filter(|c| c.language.as_deref() == Some("rust")).collect();
+    let supported_chunks: Vec<_> = res
+        .chunks
+        .iter()
+        .filter(|c| c.language.as_deref() == Some("rust"))
+        .collect();
     assert_eq!(supported_chunks.len(), 2, "only .rs chunks produced");
 }
 
@@ -187,7 +314,20 @@ fn smoke_empty_rust_file_parses_without_error() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert_eq!(res.files.len(), 1);
 }
@@ -199,7 +339,20 @@ fn smoke_whitespace_only_rust_file_parses_without_error() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert_eq!(res.files.len(), 1);
 }
@@ -213,7 +366,20 @@ fn smoke_deep_nested_directory_structure() {
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert_eq!(res.files.len(), 1);
     assert!(res.files[0].path.ends_with("j/deep.rs"));
@@ -225,13 +391,27 @@ fn smoke_multiple_files_same_directory() {
     for i in 0..5 {
         std::fs::write(
             td.path().join(format!("file_{}.rs", i)),
-            format!("fn func_{}() {{}}\n", i)
-        ).expect("write");
+            format!("fn func_{}() {{}}\n", i),
+        )
+        .expect("write");
     }
 
     let ctx = build_ctx();
     let indexer = Indexer::from_context(Arc::clone(&ctx));
-    let res = indexer.index_path_parallel(td.path().to_str().unwrap(), IndexOptions { max_concurrency: 1, explicit_files: None, extract_imports: false, extract_calls: false, chunking: ChunkingOptions::default() }, None).expect("index");
+    let res = indexer
+        .index_path_parallel(
+            td.path().to_str().unwrap(),
+            IndexOptions {
+                max_concurrency: 1,
+                explicit_files: None,
+                extract_imports: false,
+                extract_calls: false,
+                chunking: ChunkingOptions::default(),
+                backpressure: None,
+            },
+            None,
+        )
+        .expect("index");
 
     assert_eq!(res.files.len(), 5);
     assert_eq!(res.chunks.len(), 5);
