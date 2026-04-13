@@ -143,6 +143,35 @@ impl BackpressureMonitor {
     pub fn config(&self) -> &BackpressureConfig {
         &self.config
     }
+
+    /// Incrementa o tamanho da fila em 1.
+    pub fn increment_queue_size(&self) {
+        self.queue_size
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Decrementa o tamanho da fila em N unidades.
+    pub fn decrement_queue_size(&self, count: usize) {
+        let _ = self.queue_size.fetch_update(
+            std::sync::atomic::Ordering::SeqCst,
+            std::sync::atomic::Ordering::SeqCst,
+            |current| Some(current.saturating_sub(count)),
+        );
+    }
+
+    /// Reseta a fila para tamanho zero.
+    pub fn reset_queue(&self) {
+        self.queue_size
+            .store(0, std::sync::atomic::Ordering::SeqCst);
+    }
+
+    /// Força saída do estado pausado imediatamente.
+    pub fn force_resume(&self) {
+        self.reset_queue();
+        self.paused
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        self.check_and_maybe_resume();
+    }
 }
 
 impl Drop for BackpressureMonitor {
