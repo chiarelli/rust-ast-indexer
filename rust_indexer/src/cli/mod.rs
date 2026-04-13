@@ -166,7 +166,10 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
             };
 
             thread::spawn(move || {
-                let bp_monitor: Option<BackpressureMonitor> = opts.backpressure.as_ref().and_then(|config| BackpressureMonitor::new(config.clone(), 0, Some(job_id.clone())).ok());
+                let bp_monitor: Option<BackpressureMonitor> =
+                    opts.backpressure.as_ref().and_then(|config| {
+                        BackpressureMonitor::new(config.clone(), 0, Some(job_id.clone())).ok()
+                    });
                 let ev_start = Event {
                     protocol_version: "1.0.0".into(),
                     r#type: "event".into(),
@@ -174,7 +177,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     job_id: Some(job_id.clone()),
                     payload: Some(json!({"total_files":0})),
                 };
-                if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_start); } else { jsonl::write_event(&ev_start); }
+                if let Some(ref monitor) = bp_monitor {
+                    let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_start);
+                } else {
+                    jsonl::write_event(&ev_start);
+                }
 
                 let scan_opts = crate::infra::walker::ScanOptions::new(&path);
                 let _ =
@@ -203,7 +210,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     "size": chunk.size
                                 })),
                             };
-                            jsonl::write_event(&ev);
+                            if let Some(ref monitor) = bp_monitor {
+                                let _ =
+                                    crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                            } else {
+                                jsonl::write_event(&ev);
+                            }
                         }
 
                         let ev_done = Event {
@@ -215,7 +227,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 json!({"processed": result.chunks.len(), "duration_ms": 0}),
                             ),
                         };
-                        if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done); } else { jsonl::write_event(&ev_done); }
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ =
+                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                        } else {
+                            jsonl::write_event(&ev_done);
+                        }
                     }
                     Err(err) => {
                         let ev_error = Event {
@@ -229,7 +246,13 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "recoverable": false
                             })),
                         };
-                        jsonl::write_event(&ev_error);
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ = crate::infra::jsonl::emit_event_with_backpressure(
+                                monitor, ev_error,
+                            );
+                        } else {
+                            jsonl::write_event(&ev_error);
+                        }
 
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
@@ -238,7 +261,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
-                        if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done); } else { jsonl::write_event(&ev_done); }
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ =
+                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                        } else {
+                            jsonl::write_event(&ev_done);
+                        }
                     }
                 }
             });
@@ -445,6 +473,10 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
             };
 
             thread::spawn(move || {
+                let bp_monitor: Option<BackpressureMonitor> =
+                    opts.backpressure.as_ref().and_then(|config| {
+                        BackpressureMonitor::new(config.clone(), 0, Some(job_id.clone())).ok()
+                    });
                 let ev_start = Event {
                     protocol_version: "1.0.0".into(),
                     r#type: "event".into(),
@@ -452,7 +484,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     job_id: Some(job_id.clone()),
                     payload: Some(json!({"total_files":0})),
                 };
-                jsonl::write_event(&ev_start);
+                if let Some(ref monitor) = bp_monitor {
+                    let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_start);
+                } else {
+                    jsonl::write_event(&ev_start);
+                }
 
                 if let Some(ref files) = opts.explicit_files {
                     crate::infra::walker::emit_file_listed_from_records(
@@ -499,7 +535,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                     "size": chunk.size
                                 })),
                             };
-                            jsonl::write_event(&ev);
+                            if let Some(ref monitor) = bp_monitor {
+                                let _ =
+                                    crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                            } else {
+                                jsonl::write_event(&ev);
+                            }
                         }
 
                         let ev_done = Event {
@@ -511,7 +552,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 json!({"processed": result.chunks.len(), "duration_ms": 0}),
                             ),
                         };
-                        jsonl::write_event(&ev_done);
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ =
+                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                        } else {
+                            jsonl::write_event(&ev_done);
+                        }
                     }
                     Err(err) => {
                         let ev_error = Event {
@@ -525,7 +571,13 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "recoverable": false
                             })),
                         };
-                        jsonl::write_event(&ev_error);
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ = crate::infra::jsonl::emit_event_with_backpressure(
+                                monitor, ev_error,
+                            );
+                        } else {
+                            jsonl::write_event(&ev_error);
+                        }
 
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
@@ -534,7 +586,12 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
-                        jsonl::write_event(&ev_done);
+                        if let Some(ref monitor) = bp_monitor {
+                            let _ =
+                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                        } else {
+                            jsonl::write_event(&ev_done);
+                        }
                     }
                 }
             });
