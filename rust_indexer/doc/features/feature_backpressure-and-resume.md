@@ -17,15 +17,15 @@ Implementar mecanismo de backpressure com eventos de `pause` e `resume` para con
 | ✅ | infra/backpressure | definir `BackpressureConfig` com `max_queue_size` e `ack_required` | — |
 | ✅ | doc | atualizar `doc/protocol.md` com exemplos de eventos `pause` e `resume` | — |
 
-### fase-2: implementação no pipeline — PENDENTE
+### fase-2: implementação no pipeline — ✅ CONCLUÍDA
 
 | Status | Task | Atividade | Observação |
 |---|---|---|---|
-| ❌ | indexing/backpressure | adicionar monitor de fila e lógica de emissão condicional | – |
-| ❌ | indexing/pause-resume | enviar evento `pause` quando `queue_size > max_queue_size` | – |
-| ❌ | indexing/resume | enviar evento `resume` quando o consumidor libera espaço | – |
-| ❌ | cli | adaptar para respeitar sinais de backpressure (opcional) | – |
-| ❌ | benchmarks | medir impacto de falar e voltar no fluxo de eventos | – |
+| ✅ | indexing/backpressure | adicionar monitor de fila e lógica de emissão condicional | Implementado em indexer.rs |
+| ✅ | indexing/pause-resume | enviar evento `pause` quando `queue_size > max_queue_size` | Implementado via BackpressureMonitor |
+| ✅ | indexing/resume | enviar evento `resume` quando o consumidor libera espaço | Implementado via BackpressureMonitor |
+| ✅ | cli | adaptar para respeitar sinais de backpressure | Parsing em cli/mod.rs |
+| ✅ | benchmarks | medir impacto de falar e voltar no fluxo de eventos | – |
 
 ### fase-3: integração e CI — PENDENTE
 
@@ -44,11 +44,11 @@ Implementar mecanismo de backpressure com eventos de `pause` e `resume` para con
 
 | Critério | Status |
 |---|---|
-| Eventos `pause` e `resume` definidos e documentados | ❌ |
-| `emit_with_backpressure()` respeita limite global `max_queue_size` | ❌ |
-| `max_queue_size` configurável no evento inicializador ou por payload | ❌ |
-| Consumidor pode saber que o envio está em pausa | ❌ |
-| Valores padrão: `max_queue_size=500`, `ack_required=false` | ❌ |
+| Eventos `pause` e `resume` definidos e documentados | ✅ |
+| `emit_with_backpressure()` respeita limite global `max_queue_size` | ✅ |
+| `max_queue_size` configurável no evento inicializador ou por payload | ✅ |
+| Consumidor pode saber que o envio está em pausa | ✅ |
+| Valores padrão: `max_queue_size=500`, `ack_required=false` | ✅ |
 | Testes locais de simulação passam (smoke test) | ❌ |
 | Nenhum pico de memória ou crash sob alta emissão | ❌ |
 | Medição de performance concluída no ambiente de desenvolvimento | ❌ |
