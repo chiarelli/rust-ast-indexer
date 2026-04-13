@@ -146,17 +146,27 @@ impl Indexer {
             Arc::new(ParserPool::new())
         };
 
-        let bp_monitor: Option<BackpressureMonitor> = opts
+        let bp_monitor: Option<Arc<BackpressureMonitor>> = opts
             .backpressure
             .as_ref()
-            .and_then(|config| BackpressureMonitor::new(config.clone(), 0, job_id.clone()).ok());
+            .and_then(|config| BackpressureMonitor::new(config.clone(), 0, job_id.clone()).ok())
+            .map(Arc::new);
+
+        // Store monitor in global map if we have context and job_id
+        if let (Some(ctx), Some(ref jid), Some(ref monitor)) =
+            (&self.ctx, job_id.as_ref(), bp_monitor.as_ref())
+        {
+            ctx.backpressure_monitors
+                .insert(jid.to_string(), Arc::clone(monitor));
+        }
 
         let (tx, rx) = mpsc::channel();
         let base_path = Arc::new(std::path::PathBuf::from(path));
+        let monitor_clone = bp_monitor.clone();
 
         files.par_iter().enumerate().with_max_len(1).for_each_with(
-            tx.clone(),
-            |sender, (_idx, file)| {
+            (tx.clone(), monitor_clone),
+            |(sender, monitor), (_idx, file)| {
                 let lang = detect_language(&file.path);
                 let adapter_opt = lang.as_ref().and_then(|language| pool.get(language));
                 let full_path = base_path.join(&file.path);
@@ -173,7 +183,7 @@ impl Indexer {
                                     for raw_edge in imports {
                                         let normalized =
                                             normalize_import(&raw_edge, &lang_for_norm);
-                                        if let Some(ref monitor) = bp_monitor {
+                                         if let Some(ref monitor) = monitor {
                                             let _ = crate::infra::jsonl::emit_import_with_backpressure(
                                                 monitor,
                                                 job_id.clone(),
@@ -192,7 +202,7 @@ impl Indexer {
                             if opts.extract_calls {
                                 if let Ok(calls) = adapter.extract_calls(&parsed) {
                                     for edge in calls {
-                                        if let Some(ref monitor) = bp_monitor {
+                                         if let Some(ref monitor) = monitor {
                                             let _ = crate::infra::jsonl::emit_call_with_backpressure(
                                                 monitor,
                                                 job_id.clone(),
@@ -228,7 +238,7 @@ impl Indexer {
                     let _ = sender.send((chunk, file.clone()));
                     let payload =
                         crate::application::protocol::ChunkEventPayload::from(chunk_for_event);
-                    if let Some(ref monitor) = bp_monitor {
+                    if let Some(ref monitor) = monitor {
                         let _ = crate::infra::jsonl::emit_chunk_with_backpressure(
                             monitor,
                             job_id.clone(),
@@ -464,6 +474,7 @@ mod tests {
             config: crate::app::bootstrap::Config::new(1, 10),
             metrics: None,
             logger: None,
+            backpressure_monitors: dashmap::DashMap::new(),
         })
     }
 
