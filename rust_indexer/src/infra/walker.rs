@@ -101,6 +101,7 @@ pub fn emit_file_listed_events(
             };
             if let Some(monitor) = bp_monitor {
                 let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                let _ = monitor.check_and_maybe_pause();
             } else {
                 jsonl::write_event(&ev);
             }
@@ -118,6 +119,7 @@ pub fn emit_file_listed_events(
             };
             if let Some(monitor) = bp_monitor {
                 let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                let _ = monitor.check_and_maybe_pause();
             } else {
                 jsonl::write_event(&ev);
             }
