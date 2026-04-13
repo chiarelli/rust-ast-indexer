@@ -5,9 +5,13 @@ use rayon::prelude::*;
 use std::collections::HashMap;
 
 use crate::app::bootstrap::ApplicationContext;
-use crate::application::chunking::{ChunkStrategy, ChunkingOptions, ChunkingStrategy, ContextInjectionChunker, LineLimitedChunker, OverlapChunker, SemanticChunker, SymbolBoundaryChunker};
+use crate::application::chunking::{
+    ChunkStrategy, ChunkingOptions, ChunkingStrategy, ContextInjectionChunker, LineLimitedChunker,
+    OverlapChunker, SemanticChunker, SymbolBoundaryChunker,
+};
 use crate::domain::normalize::normalize_import;
 use crate::domain::types::{Chunk, FileRecord, Symbol};
+use crate::infra::backpressure::{BackpressureConfig, BackpressureMonitor};
 use crate::infra::parser_pool::ParserPool;
 use crate::infra::walker::{walk_path, ScanOptions, WalkerError};
 
@@ -32,6 +36,7 @@ pub struct IndexOptions {
     pub extract_imports: bool,
     pub extract_calls: bool,
     pub chunking: ChunkingOptions,
+    pub backpressure: Option<BackpressureConfig>,
 }
 
 pub struct Indexer {
@@ -51,6 +56,7 @@ impl Default for IndexOptions {
             extract_imports: true,
             extract_calls: true,
             chunking: ChunkingOptions::default(),
+            backpressure: None,
         }
     }
 }
@@ -93,7 +99,13 @@ impl Indexer {
         for file in &files {
             let full_path = std::path::PathBuf::from(path).join(&file.path);
             let text = std::fs::read_to_string(&full_path).unwrap_or_default();
-            let generated = chunk_file_contents(&file.path, &text, file.language.clone(), None, &opts.chunking);
+            let generated = chunk_file_contents(
+                &file.path,
+                &text,
+                file.language.clone(),
+                None,
+                &opts.chunking,
+            );
 
             for chunk in generated {
                 let payload = crate::application::protocol::ChunkEventPayload::from(chunk.clone());
@@ -134,14 +146,17 @@ impl Indexer {
             Arc::new(ParserPool::new())
         };
 
+        let bp_monitor: Option<BackpressureMonitor> = opts
+            .backpressure
+            .as_ref()
+            .and_then(|config| BackpressureMonitor::new(config.clone(), 0, job_id.clone()).ok());
+
         let (tx, rx) = mpsc::channel();
         let base_path = Arc::new(std::path::PathBuf::from(path));
 
-        files
-            .par_iter()
-            .enumerate()
-            .with_max_len(1)
-            .for_each_with(tx.clone(), |sender, (_idx, file)| {
+        files.par_iter().enumerate().with_max_len(1).for_each_with(
+            tx.clone(),
+            |sender, (_idx, file)| {
                 let lang = detect_language(&file.path);
                 let adapter_opt = lang.as_ref().and_then(|language| pool.get(language));
                 let full_path = base_path.join(&file.path);
@@ -156,8 +171,20 @@ impl Indexer {
                                 if let Ok(imports) = adapter.extract_imports(&parsed) {
                                     let lang_for_norm = lang.clone().unwrap_or_default();
                                     for raw_edge in imports {
-                                        let normalized = normalize_import(&raw_edge, &lang_for_norm);
-                                        crate::infra::jsonl::write_import_event(job_id.clone(), &normalized);
+                                        let normalized =
+                                            normalize_import(&raw_edge, &lang_for_norm);
+                                        if let Some(ref monitor) = bp_monitor {
+                                            let _ = crate::infra::jsonl::emit_import_with_backpressure(
+                                                monitor,
+                                                job_id.clone(),
+                                                &normalized,
+                                            );
+                                        } else {
+                                            crate::infra::jsonl::write_import_event(
+                                                job_id.clone(),
+                                                &normalized,
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -165,7 +192,18 @@ impl Indexer {
                             if opts.extract_calls {
                                 if let Ok(calls) = adapter.extract_calls(&parsed) {
                                     for edge in calls {
-                                        crate::infra::jsonl::write_call_event(job_id.clone(), &edge);
+                                        if let Some(ref monitor) = bp_monitor {
+                                            let _ = crate::infra::jsonl::emit_call_with_backpressure(
+                                                monitor,
+                                                job_id.clone(),
+                                                &edge,
+                                            );
+                                        } else {
+                                            crate::infra::jsonl::write_call_event(
+                                                job_id.clone(),
+                                                &edge,
+                                            );
+                                        }
                                     }
                                 }
                             }
@@ -188,10 +226,20 @@ impl Indexer {
                 for chunk in chunks_for_file {
                     let chunk_for_event = chunk.clone();
                     let _ = sender.send((chunk, file.clone()));
-                    let payload = crate::application::protocol::ChunkEventPayload::from(chunk_for_event);
-                    crate::infra::jsonl::write_chunk_event(job_id.clone(), &payload);
+                    let payload =
+                        crate::application::protocol::ChunkEventPayload::from(chunk_for_event);
+                    if let Some(ref monitor) = bp_monitor {
+                        let _ = crate::infra::jsonl::emit_chunk_with_backpressure(
+                            monitor,
+                            job_id.clone(),
+                            &payload,
+                        );
+                    } else {
+                        crate::infra::jsonl::write_chunk_event(job_id.clone(), &payload);
+                    }
                 }
-            });
+            },
+        );
 
         drop(tx);
 
@@ -213,7 +261,10 @@ impl Indexer {
         let mut files_out = files_out.into_values().collect::<Vec<_>>();
         files_out.sort_by(|a, b| a.path.cmp(&b.path));
 
-        Ok(IndexResult { chunks, files: files_out })
+        Ok(IndexResult {
+            chunks,
+            files: files_out,
+        })
     }
 }
 
@@ -242,7 +293,9 @@ fn chunk_file_contents(
     });
 
     let base_chunker: Box<dyn ChunkStrategy> = match chunking_opts.strategy {
-        ChunkingStrategy::SymbolBoundary => Box::new(SymbolBoundaryChunker::new(chunking_opts.max_lines)),
+        ChunkingStrategy::SymbolBoundary => {
+            Box::new(SymbolBoundaryChunker::new(chunking_opts.max_lines))
+        }
         ChunkingStrategy::Semantic => Box::new(SemanticChunker::new(chunking_opts.max_lines)),
         ChunkingStrategy::LineLimited => Box::new(LineLimitedChunker::new(chunking_opts.max_lines)),
     };
@@ -250,25 +303,25 @@ fn chunk_file_contents(
     let chunks = match normalized_symbols.as_ref() {
         Some(syms) if !syms.is_empty() => {
             let mut chunker: Box<dyn ChunkStrategy> = base_chunker;
-            
+
             if chunking_opts.overlap_lines > 0 {
                 chunker = Box::new(OverlapChunker::new(chunker, chunking_opts.overlap_lines));
             }
-            
+
             if chunking_opts.include_context {
                 chunker = Box::new(ContextInjectionChunker::new(chunker));
             }
-            
+
             chunker.chunk_file(file_path, source, Some(syms))
         }
         _ => {
             // For files without symbols, we can still apply size-limited chunking
             let mut chunker: Box<dyn ChunkStrategy> = base_chunker;
-            
+
             if chunking_opts.overlap_lines > 0 {
                 chunker = Box::new(OverlapChunker::new(chunker, chunking_opts.overlap_lines));
             }
-            
+
             chunker.chunk_file(file_path, source, None)
         }
     };
@@ -296,7 +349,15 @@ fn chunk_file_contents(
 fn is_chunk_boundary_symbol(symbol: &Symbol) -> bool {
     matches!(
         symbol.kind.to_lowercase().as_str(),
-        "function" | "struct" | "enum" | "trait" | "impl" | "class" | "method" | "constructor" | "mod"
+        "function"
+            | "struct"
+            | "enum"
+            | "trait"
+            | "impl"
+            | "class"
+            | "method"
+            | "constructor"
+            | "mod"
     )
 }
 
@@ -329,8 +390,11 @@ mod tests {
             extract_imports: false,
             extract_calls: false,
             chunking: ChunkingOptions::default(),
+            backpressure: None,
         };
-        let result = indexer.index_path(dir.path().to_str().unwrap(), opts).unwrap();
+        let result = indexer
+            .index_path(dir.path().to_str().unwrap(), opts)
+            .unwrap();
 
         assert_eq!(result.files.len(), 1);
         assert_eq!(result.chunks.len(), 1);
@@ -354,6 +418,7 @@ mod tests {
             extract_imports: false,
             extract_calls: false,
             chunking: ChunkingOptions::default(),
+            backpressure: None,
         };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
@@ -371,14 +436,26 @@ mod tests {
     fn build_context() -> Arc<ApplicationContext> {
         let registry = Arc::new(crate::app::bootstrap::Registry::new());
         registry.register("rust", Arc::new(crate::adapters::rust::RustAdapter));
-        registry.register("typescript", Arc::new(crate::adapters::typescript::TypeScriptAdapter));
-        registry.register("javascript", Arc::new(crate::adapters::typescript::TypeScriptAdapter));
+        registry.register(
+            "typescript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter),
+        );
+        registry.register(
+            "javascript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter),
+        );
         registry.register("java", Arc::new(crate::adapters::java::JavaAdapter));
 
         let pool = ParserPool::new();
         pool.register("rust", Arc::new(crate::adapters::rust::RustAdapter));
-        pool.register("typescript", Arc::new(crate::adapters::typescript::TypeScriptAdapter));
-        pool.register("javascript", Arc::new(crate::adapters::typescript::TypeScriptAdapter));
+        pool.register(
+            "typescript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter),
+        );
+        pool.register(
+            "javascript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter),
+        );
         pool.register("java", Arc::new(crate::adapters::java::JavaAdapter));
 
         Arc::new(ApplicationContext {
@@ -407,6 +484,7 @@ mod tests {
             extract_imports: false,
             extract_calls: false,
             chunking: ChunkingOptions::default(),
+            backpressure: None,
         };
 
         let result = indexer
@@ -419,11 +497,20 @@ mod tests {
         let chunk = result
             .chunks
             .iter()
-            .find(|chunk| chunk.chunk_kind.as_deref() == Some("Symbol") && chunk.content.contains("pub fn add"))
+            .find(|chunk| {
+                chunk.chunk_kind.as_deref() == Some("Symbol")
+                    && chunk.content.contains("pub fn add")
+            })
             .expect("expected a symbol chunk for pub fn add");
         assert!(!chunk.symbol_ids.is_empty());
         assert!(chunk.content.starts_with("use std::fmt;\n\n"));
-        assert_eq!(chunk.metadata.as_ref().and_then(|meta| meta.get("has_context_prefix")), Some(&serde_json::Value::Bool(true)));
+        assert_eq!(
+            chunk
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("has_context_prefix")),
+            Some(&serde_json::Value::Bool(true))
+        );
         assert_eq!(chunk.language.as_deref(), Some("rust"));
     }
 
@@ -442,6 +529,7 @@ mod tests {
             max_concurrency: 2,
             explicit_files: None,
             extract_imports: false,
+            backpressure: None,
             extract_calls: false,
             chunking: ChunkingOptions::default(),
         };

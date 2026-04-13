@@ -107,7 +107,10 @@ pub fn write_pause_event_with_payload(job_id: Option<String>, payload: serde_jso
     write_event(&ev);
 }
 
-pub fn build_resume_event_with_payload(job_id: Option<String>, payload: serde_json::Value) -> Event {
+pub fn build_resume_event_with_payload(
+    job_id: Option<String>,
+    payload: serde_json::Value,
+) -> Event {
     Event {
         protocol_version: "1.0.0".into(),
         r#type: "event".into(),
@@ -160,7 +163,7 @@ where
     // Se chegou aqui, pode emitir o evento
     let event = event_builder();
     write_event(&event);
-    
+
     Ok(())
 }
 
@@ -284,7 +287,10 @@ pub fn emit_resume_with_backpressure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::backpressure::{BackpressureMonitor, BackpressureConfig, BackpressureConfigError, PauseResumePayload, PauseResumeReason, PauseReason, ResumeReason};
+    use crate::infra::backpressure::{
+        BackpressureConfig, BackpressureConfigError, BackpressureMonitor, PauseReason,
+        PauseResumePayload, PauseResumeReason, ResumeReason,
+    };
 
     #[test]
     fn build_pause_event_contains_metadata() {
@@ -329,24 +335,27 @@ mod tests {
     fn test_emit_with_backpressure_when_not_paused_and_queue_below_threshold() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
         let monitor = BackpressureMonitor::new(config, 50, Some("test-job".to_string())).unwrap();
-        
+
         let mut event_emitted = false;
         let result = emit_with_backpressure(&monitor, || {
             event_emitted = true;
-            build_chunk_event(None, &ChunkEventPayload {
-                chunk_id: "test-chunk".into(),
-                chunk_kind: crate::application::protocol::ChunkKind::FullFile,
-                file: "test.rs".into(),
-                language: Some("rust".into()),
-                symbol_id: None,
-                start_line: 1,
-                end_line: 10,
-                text: "test".into(),
-                chunk_md5: "md5".into(),
-                size: 4,
-            })
+            build_chunk_event(
+                None,
+                &ChunkEventPayload {
+                    chunk_id: "test-chunk".into(),
+                    chunk_kind: crate::application::protocol::ChunkKind::FullFile,
+                    file: "test.rs".into(),
+                    language: Some("rust".into()),
+                    symbol_id: None,
+                    start_line: 1,
+                    end_line: 10,
+                    text: "test".into(),
+                    chunk_md5: "md5".into(),
+                    size: 4,
+                },
+            )
         });
-        
+
         assert!(result.is_ok());
         assert!(event_emitted);
         assert!(!monitor.is_paused());
@@ -356,28 +365,31 @@ mod tests {
     fn test_emit_with_backpressure_when_paused_and_queue_above_threshold() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
         let monitor = BackpressureMonitor::new(config, 100, Some("test-job".to_string())).unwrap();
-        
+
         // Simulate pause
         monitor.check_and_maybe_pause();
         assert!(monitor.is_paused());
-        
+
         let mut event_emitted = false;
         let result = emit_with_backpressure(&monitor, || {
             event_emitted = true;
-            build_chunk_event(None, &ChunkEventPayload {
-                chunk_id: "test-chunk".into(),
-                chunk_kind: crate::application::protocol::ChunkKind::FullFile,
-                file: "test.rs".into(),
-                language: Some("rust".into()),
-                symbol_id: None,
-                start_line: 1,
-                end_line: 10,
-                text: "test".into(),
-                chunk_md5: "md5".into(),
-                size: 4,
-            })
+            build_chunk_event(
+                None,
+                &ChunkEventPayload {
+                    chunk_id: "test-chunk".into(),
+                    chunk_kind: crate::application::protocol::ChunkKind::FullFile,
+                    file: "test.rs".into(),
+                    language: Some("rust".into()),
+                    symbol_id: None,
+                    start_line: 1,
+                    end_line: 10,
+                    text: "test".into(),
+                    chunk_md5: "md5".into(),
+                    size: 4,
+                },
+            )
         });
-        
+
         assert!(result.is_ok());
         assert!(!event_emitted); // Should NOT emit when paused
     }
@@ -386,7 +398,7 @@ mod tests {
     fn test_emit_chunk_with_backpressure() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
         let monitor = BackpressureMonitor::new(config, 50, Some("test-job".to_string())).unwrap();
-        
+
         let payload = ChunkEventPayload {
             chunk_id: "test-chunk".into(),
             chunk_kind: crate::application::protocol::ChunkKind::FullFile,
@@ -399,7 +411,7 @@ mod tests {
             chunk_md5: "md5".into(),
             size: 4,
         };
-        
+
         let result = emit_chunk_with_backpressure(&monitor, Some("test-job".to_string()), &payload);
         assert!(result.is_ok());
     }
@@ -408,7 +420,7 @@ mod tests {
     fn test_emit_import_with_backpressure() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
         let monitor = BackpressureMonitor::new(config, 50, Some("test-job".to_string())).unwrap();
-        
+
         let payload = ImportEdge {
             id: "import-1".into(),
             from_file: "source.rs".into(),
@@ -424,8 +436,9 @@ mod tests {
             },
             resolved: true,
         };
-        
-        let result = emit_import_with_backpressure(&monitor, Some("test-job".to_string()), &payload);
+
+        let result =
+            emit_import_with_backpressure(&monitor, Some("test-job".to_string()), &payload);
         assert!(result.is_ok());
     }
 
@@ -433,7 +446,7 @@ mod tests {
     fn test_emit_call_with_backpressure() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
         let monitor = BackpressureMonitor::new(config, 50, Some("test-job".to_string())).unwrap();
-        
+
         let payload = CallEdge {
             id: "call-1".into(),
             caller_symbol_id: Some("caller-symbol".into()),
@@ -448,7 +461,7 @@ mod tests {
             },
             resolved: true,
         };
-        
+
         let result = emit_call_with_backpressure(&monitor, Some("test-job".to_string()), &payload);
         assert!(result.is_ok());
     }
