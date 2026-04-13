@@ -215,7 +215,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 json!({"processed": result.chunks.len(), "duration_ms": 0}),
                             ),
                         };
-                        jsonl::write_event(&ev_done);
+                        if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done); } else { jsonl::write_event(&ev_done); }
                     }
                     Err(err) => {
                         let ev_error = Event {
@@ -238,7 +238,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
-                        jsonl::write_event(&ev_done);
+                        if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done); } else { jsonl::write_event(&ev_done); }
                     }
                 }
             });
