@@ -174,7 +174,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     job_id: Some(job_id.clone()),
                     payload: Some(json!({"total_files":0})),
                 };
-                jsonl::write_event(&ev_start);
+                if let Some(ref monitor) = bp_monitor { let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_start); } else { jsonl::write_event(&ev_start); }
 
                 let scan_opts = crate::infra::walker::ScanOptions::new(&path);
                 let _ =
