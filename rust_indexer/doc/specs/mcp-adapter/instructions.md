@@ -10,7 +10,7 @@ O foco da V1 é compatibilidade stdio - o indexer funciona como tool MCP que res
 
 ## Fases e tarefas
 
-### fase-1: MCP Schema e Tool Definitions — 👷 EM PROGRESSO
+### fase-1: MCP Schema e Tool Definitions — ✅ CONCLUIDA
 
 - task: mcp/schema
   - atividade: feat(app): definir MCP tool schema para rust_indexer
@@ -24,14 +24,14 @@ O foco da V1 é compatibilidade stdio - o indexer funciona como tool MCP que res
     - `stop` → MCP tool
     - `status` → MCP tool
 
-### fase-2: MCP Stdio Adapter — ⏭️ PENDENTE
+### fase-2: MCP Stdio Adapter — ✅ CONCLUIDA
 
 - task: mcp/stdio
   - atividade: feat(infra): implementar MCP stdio adapter
   - atividade: test(infra): unit tests para JSON-RPC parsing
   - atividade: test(smoke): smoke test que valida resposta MCP
 
-### fase-3: Integração — ⏭️ PENDENTE
+### fase-3: Integração — ✅ CONCLUIDA
 
 - task: mcp/integration
   - atividade: feat(cli): adicionar modo MCP ao CLI
@@ -95,11 +95,11 @@ O foco da V1 é compatibilidade stdio - o indexer funciona como tool MCP que res
 
 ## Critérios de aceitação
 
-- ⏭️ Tool schema definido e testado (`cargo test` passa)
-- ⏭️ 4 capabilities mapeadas para MCP tools com input schemas
-- ⏭️ Adapter stdio responde a JSON-RPC requests com respostas válidas
-- ⏭️ Eventos emitidos durante indexação como JSON-RPC notifications
-- ⏭️ Smoke test passando que valida integração MCP
+- ✅ Tool schema definido e testado (`cargo test` passa)
+- ✅ 4 capabilities mapeadas para MCP tools com input schemas
+- ✅ Adapter stdio responde a JSON-RPC requests com respostas válidas
+- ✅ Eventos emitidos durante indexação como JSON-RPC notifications
+- ✅ Smoke test passando que valida integração MCP
 
 ---
 

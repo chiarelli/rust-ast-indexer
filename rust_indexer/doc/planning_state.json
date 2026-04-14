@@ -244,16 +244,17 @@
       ]
     },
     "mcp_tooling": {
-      "completion": 0.95,
+      "completion": 1.0,
       "threshold": 0.9,
       "assumptions": [
         "Compatibilidade MCP é desejável, mas não obrigatória como protocolo nativo na V1"
       ],
       "open_questions": [],
       "decisions": [
-        "Compatibilidade com MCP stdio opcional — implementar JSONL stdio compatível com futura adaptação",
-        "Preservar envelopes e capabilities que facilitem um adapter MCP depois",
-        "Possíveis extensões para HTTP/SSE MCP no futuro"
+        "Implementado: modo MCP via flag --mcp com JSON-RPC 2.0 stdio",
+        "4 tools: list_languages, index_path, stop, status",
+        "Notifications: indexing/start, indexing/file, indexing/complete",
+        "Preservar envelopes e capabilities que facilitem um adapter MCP depois"
       ]
     },
     "performance_strategy": {
@@ -331,6 +332,6 @@
     "Chamador (Node.js) gerenciará armazenamento e embeddings",
     "Engine exporá capacidades via stdio"
   ],
-  "last_iteration_notes": "Décima iteração: consolidei a especificação como binário stateless com JSONL, MCP-compatível, schema SQL apenas como exemplo para o caller, além de AST/symbol/import/call/protocol já definidos.",
+  "last_iteration_notes": "Décima primeira iteração: feature/mcp-adapter implementada com modo MCP via flag --mcp, JSON-RPC 2.0, notifications e smoke tests.",
   "planning_completed": false
 }
