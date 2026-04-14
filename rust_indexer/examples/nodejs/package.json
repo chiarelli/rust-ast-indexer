@@ -1,0 +1,13 @@
+{
+  "name": "rust-indexer-examples",
+  "version": "0.1.0",
+  "description": "Node.js examples for rust_indexer",
+  "main": "basic_indexer.js",
+  "scripts": {
+    "start": "node basic_indexer.js"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  indexer:
+    build:
+      context: ../..
+      dockerfile: examples/docker/Dockerfile
+    container_name: rust_indexer
+    volumes:
+      - ../../src:/data/src:ro
+    tty: true
+    stdin_open: true
+    entrypoint: ["tail", "-f", "/dev/null"]
+    networks:
+      - indexer-net
+
+networks:
+  indexer-net:
+    driver: bridge
