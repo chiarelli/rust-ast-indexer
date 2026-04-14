@@ -241,6 +241,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                            // Cleanup: remove monitor from global map when job completes
+                            ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
                         }
@@ -279,6 +281,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                            // Cleanup: remove monitor from global map when job completes (even on error)
+                            ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
                         }
@@ -580,6 +584,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                            // Cleanup: remove monitor from global map when job completes
+                            ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
                         }
@@ -618,6 +624,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
+                            // Cleanup: remove monitor from global map when job completes (even on error)
+                            ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
                         }

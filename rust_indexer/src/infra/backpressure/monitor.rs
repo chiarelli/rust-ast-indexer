@@ -1,7 +1,8 @@
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
-    Arc,
+    Arc, Mutex,
 };
+use std::time::Instant;
 
 use crate::{
     application::protocol::Event,
@@ -23,6 +24,7 @@ pub struct BackpressureMonitor {
     config: BackpressureConfig,
     queue_size: Arc<AtomicUsize>,
     paused: Arc<AtomicBool>,
+    paused_since: Arc<Mutex<Option<Instant>>>,
     job_id: JobId,
 }
 
@@ -48,6 +50,7 @@ impl BackpressureMonitor {
             config,
             queue_size: Arc::new(AtomicUsize::new(initial_size)),
             paused: Arc::new(AtomicBool::new(false)),
+            paused_since: Arc::new(Mutex::new(None)),
             job_id,
         })
     }
@@ -99,6 +102,7 @@ impl BackpressureMonitor {
             };
             jsonl::write_event(&event);
             self.paused.store(true, std::sync::atomic::Ordering::SeqCst);
+            *self.paused_since.lock().unwrap() = Some(Instant::now());
             true
         } else {
             false
@@ -109,13 +113,20 @@ impl BackpressureMonitor {
     ///
     /// Retorna `true` se o evento foi emitido.
     pub fn check_and_maybe_resume(&self) -> bool {
+        self.check_and_maybe_resume_with_reason(ResumeReason::QueueUnderThreshold)
+    }
+
+    /// Verifica se deve emitir evento de resume com uma razão específica.
+    ///
+    /// Retorna `true` se o evento foi emitido.
+    pub fn check_and_maybe_resume_with_reason(&self, reason: ResumeReason) -> bool {
         let size = self.current_queue_size();
         let is_paused = self.is_paused();
         let should_resume = self.config.should_resume(size);
 
         if is_paused && should_resume {
             let payload = PauseResumePayload {
-                reason: PauseResumeReason::Resume(ResumeReason::QueueUnderThreshold),
+                reason: PauseResumeReason::Resume(reason),
                 threshold: self.config.resume_threshold(),
                 current_size: size,
                 backpressure_active: false,
@@ -130,15 +141,60 @@ impl BackpressureMonitor {
             jsonl::write_event(&event);
             self.paused
                 .store(false, std::sync::atomic::Ordering::SeqCst);
+            *self.paused_since.lock().unwrap() = None;
             true
         } else {
             false
         }
     }
 
+    /// Verifica se o tempo de pausa excedeu o limite configurado.
+    ///
+    /// Se excedido, emite evento de resume com razão "pause_timeout" e reseta a fila.
+    /// Retorna `true` se o timeout foi acionado e resume foi emitido.
+    pub fn check_timeout(&self) -> bool {
+        let is_paused = self.is_paused();
+        if !is_paused {
+            return false;
+        }
+
+        let paused_since = self.paused_since.lock().unwrap();
+        if let Some(instant) = *paused_since {
+            let elapsed = instant.elapsed().as_secs();
+            if elapsed >= self.config.pause_timeout_secs {
+                drop(paused_since);
+                self.reset_queue();
+                self.paused
+                    .store(false, std::sync::atomic::Ordering::SeqCst);
+                *self.paused_since.lock().unwrap() = None;
+                let payload = PauseResumePayload {
+                    reason: PauseResumeReason::Resume(ResumeReason::PauseTimeout),
+                    threshold: self.config.resume_threshold(),
+                    current_size: 0,
+                    backpressure_active: false,
+                };
+                let event = Event {
+                    protocol_version: "1.0.0".into(),
+                    r#type: "event".into(),
+                    event: "resume".into(),
+                    job_id: self.job_id.clone(),
+                    payload: serde_json::to_value(&payload).ok(),
+                };
+                jsonl::write_event(&event);
+                return true;
+            }
+        }
+        false
+    }
+
     /// Verifica e emite eventos apropriados (pause ou resume) se necessário.
+    /// Também verifica timeout para pausas longas.
     pub fn check_and_emit(&self) -> (bool, bool) {
-        (self.check_and_maybe_pause(), self.check_and_maybe_resume())
+        let timeout_triggered = self.check_timeout();
+        (
+            self.check_and_maybe_pause(),
+            self.check_and_maybe_resume() || timeout_triggered,
+        )
     }
 
     /// Retorna a configuração deste monitor.
