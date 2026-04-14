@@ -1,8 +1,7 @@
 use std::sync::Arc;
 
-use crate::infra::parser_pool::ParserPool;
+use crate::infra::{backpressure::BackpressureMonitor, parser_pool::ParserPool};
 use dashmap::DashMap;
-
 
 #[derive(Debug)]
 pub enum ConfigError {
@@ -16,7 +15,9 @@ impl std::fmt::Display for ConfigError {
         match self {
             ConfigError::Io(e) => write!(f, "failed to read config file: {}", e),
             ConfigError::MissingField(name) => write!(f, "missing required config field: {}", name),
-            ConfigError::InvalidValue(name, val) => write!(f, "invalid value for '{}': {}", name, val),
+            ConfigError::InvalidValue(name, val) => {
+                write!(f, "invalid value for '{}': {}", name, val)
+            }
         }
     }
 }
@@ -37,7 +38,10 @@ pub struct Config {
 
 impl Config {
     pub fn new(max_concurrency: usize, max_queue_size: usize) -> Self {
-        Self { max_concurrency, max_queue_size }
+        Self {
+            max_concurrency,
+            max_queue_size,
+        }
     }
 
     #[cfg(feature = "parsing")]
@@ -46,17 +50,22 @@ impl Config {
         let value: serde_json::Value = serde_json::from_str(&content)
             .map_err(|e| ConfigError::InvalidValue("JSON", e.to_string()))?;
 
-        let max_concurrency = value.get("max_concurrency")
+        let max_concurrency = value
+            .get("max_concurrency")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .ok_or(ConfigError::MissingField("max_concurrency"))?;
 
-        let max_queue_size = value.get("max_queue_size")
+        let max_queue_size = value
+            .get("max_queue_size")
             .and_then(|v| v.as_u64())
             .map(|v| v as usize)
             .ok_or(ConfigError::MissingField("max_queue_size"))?;
 
-        Ok(Self { max_concurrency, max_queue_size })
+        Ok(Self {
+            max_concurrency,
+            max_queue_size,
+        })
     }
 
     /// Loads config by checking environment variables first, then falling back to defaults.
@@ -71,7 +80,10 @@ impl Config {
             .and_then(|v| v.parse::<usize>().ok())
             .unwrap_or(100);
 
-        Self { max_concurrency, max_queue_size }
+        Self {
+            max_concurrency,
+            max_queue_size,
+        }
     }
 
     /// Attempts to load from a config file; falls back to environment variables.
@@ -94,7 +106,9 @@ pub struct Registry {
 
 impl Default for Registry {
     fn default() -> Self {
-        Self { inner: DashMap::new() }
+        Self {
+            inner: DashMap::new(),
+        }
     }
 }
 
@@ -108,7 +122,10 @@ impl Registry {
     }
 
     pub fn get(&self, lang: &str) -> Option<Arc<dyn crate::adapters::LanguageAdapter>> {
-        self.inner.get(lang).as_ref().map(|entry| Arc::clone(entry.value()))
+        self.inner
+            .get(lang)
+            .as_ref()
+            .map(|entry| Arc::clone(entry.value()))
     }
 
     pub fn list_languages(&self) -> Vec<String> {
@@ -131,6 +148,7 @@ pub struct ApplicationContext {
     pub config: Config,
     pub metrics: Option<Arc<Metrics>>,
     pub logger: Option<Arc<Logger>>,
+    pub backpressure_monitors: DashMap<String, Arc<BackpressureMonitor>>,
 }
 
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
@@ -149,12 +167,25 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
     #[cfg(feature = "parsing")]
     {
         pool.register("rust", Arc::new(crate::adapters::rust::RustAdapter::new()));
-        pool.register("typescript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
-        pool.register("javascript", Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()));
+        pool.register(
+            "typescript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()),
+        );
+        pool.register(
+            "javascript",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()),
+        );
         pool.register("java", Arc::new(crate::adapters::java::JavaAdapter::new()));
     }
 
-    Arc::new(ApplicationContext { registry, parser_pool: pool, config, metrics: None, logger: None })
+    Arc::new(ApplicationContext {
+        registry,
+        parser_pool: pool,
+        config,
+        metrics: None,
+        logger: None,
+        backpressure_monitors: DashMap::new(),
+    })
 }
 
 #[cfg(test)]
@@ -163,7 +194,10 @@ mod tests {
 
     #[test]
     fn init_context_returns_context() {
-        let cfg = Config { max_concurrency: 2, max_queue_size: 10 };
+        let cfg = Config {
+            max_concurrency: 2,
+            max_queue_size: 10,
+        };
         let ctx = init_context(cfg);
         assert!(Arc::strong_count(&ctx) >= 1);
         assert!(ctx.registry.get("nope").is_none());
@@ -228,9 +262,16 @@ mod tests {
         struct StubAdapter;
         impl LanguageAdapter for StubAdapter {
             fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
-                Ok(ParsedFile { language: "stub".to_string(), source_len: 0, source: String::new() })
+                Ok(ParsedFile {
+                    language: "stub".to_string(),
+                    source_len: 0,
+                    source: String::new(),
+                })
             }
-            fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<crate::domain::types::Symbol>> {
+            fn extract_symbols(
+                &self,
+                _parsed: &ParsedFile,
+            ) -> Result<Vec<crate::domain::types::Symbol>> {
                 Ok(vec![])
             }
             fn box_clone(&self) -> Box<dyn LanguageAdapter> {

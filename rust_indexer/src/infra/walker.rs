@@ -10,6 +10,7 @@ use walkdir::WalkDir;
 
 use crate::application::protocol::Event;
 use crate::domain::types::FileRecord;
+use crate::infra::backpressure::BackpressureMonitor;
 use crate::infra::jsonl;
 use serde_json::json;
 
@@ -85,6 +86,7 @@ pub fn walk_path(opts: &ScanOptions) -> Result<Vec<FileRecord>, WalkerError> {
 pub fn emit_file_listed_events(
     opts: &ScanOptions,
     job_id: Option<String>,
+    bp_monitor: Option<&BackpressureMonitor>,
 ) -> Result<(), WalkerError> {
     walk_with_callback(opts, |res| match res {
         Ok(record) => {
@@ -97,7 +99,12 @@ pub fn emit_file_listed_events(
                     "file": record
                 })),
             };
-            jsonl::write_event(&ev);
+            if let Some(monitor) = bp_monitor {
+                let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                let _ = monitor.check_and_maybe_pause();
+            } else {
+                jsonl::write_event(&ev);
+            }
         }
         Err((path, reason)) => {
             let ev = Event {
@@ -110,12 +117,21 @@ pub fn emit_file_listed_events(
                     "reason": reason
                 })),
             };
-            jsonl::write_event(&ev);
+            if let Some(monitor) = bp_monitor {
+                let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+                let _ = monitor.check_and_maybe_pause();
+            } else {
+                jsonl::write_event(&ev);
+            }
         }
     })
 }
 
-pub fn emit_file_listed_from_records(records: &[FileRecord], job_id: Option<String>) {
+pub fn emit_file_listed_from_records(
+    records: &[FileRecord],
+    job_id: Option<String>,
+    bp_monitor: Option<&BackpressureMonitor>,
+) {
     for record in records {
         let ev = Event {
             protocol_version: "1.0.0".into(),
@@ -126,7 +142,11 @@ pub fn emit_file_listed_from_records(records: &[FileRecord], job_id: Option<Stri
                 "file": record
             })),
         };
-        jsonl::write_event(&ev);
+        if let Some(monitor) = bp_monitor {
+            let _ = crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
+        } else {
+            jsonl::write_event(&ev);
+        }
     }
 }
 

@@ -54,6 +54,7 @@ pub enum PauseReason {
 pub enum ResumeReason {
     QueueUnderThreshold,
     ExternalSignal,
+    PauseTimeout,
 }
 
 /// Alias para JobId (já existe como Option<String> em protocol.rs)

@@ -41,6 +41,7 @@ fn build_ctx() -> Arc<ApplicationContext> {
         config,
         metrics: None,
         logger: None,
+        backpressure_monitors: dashmap::DashMap::new(),
     })
 }
 

@@ -3,9 +3,6 @@ use crate::{
     domain::types::{CallEdge, ImportEdge},
 };
 
-// O módulo backpressure já existe em infra/backpressure/
-// Não declare novamente aqui
-
 pub fn write_event(e: &Event) {
     let s = serde_json::to_string(e).unwrap_or_else(|_| "{}".into());
     println!("{}", s);
@@ -126,18 +123,6 @@ pub fn write_resume_event_with_payload(job_id: Option<String>, payload: serde_js
 }
 
 /// Emite um evento com controle de backpressure.
-///
-/// Esta função encapsula a lógica de emitir um evento enquanto verifica
-/// se o backpressure está ativo e se deve pausar ou retomar.
-///
-/// # Arguments
-///
-/// * `monitor` — Referência ao monitor de backpressure
-/// * `event_builder` — Função que constrói o evento para emitir
-///
-/// # Returns
-///
-/// Retorna `Ok(())` se o evento foi emitido ou `BackpressureConfigError` se houver erro.
 pub fn emit_with_backpressure<F>(
     monitor: &crate::infra::backpressure::BackpressureMonitor,
     event_builder: F,
@@ -145,24 +130,32 @@ pub fn emit_with_backpressure<F>(
 where
     F: FnOnce() -> Event,
 {
-    // Verifica se estamos atualmente em estado de pausa
+    // Always increment queue first
+    monitor.increment_queue_size();
+    let current_size = monitor.current_queue_size();
+
+    // If paused, check for resume first
     if monitor.is_paused() {
-        // Verifica se podemos retomar
-        if monitor.check_and_maybe_resume() {
-            // Se retomou, verifica novamente após retomar
+        monitor.check_and_maybe_resume();
+        if monitor.is_paused() {
+            return Ok(()); // Still paused, skip emission
+        }
+        // Resumed, proceed to emit
+    } else {
+        // Not paused: check if we should pause BEFORE current event
+        if current_size >= monitor.config().max_queue_size {
             monitor.check_and_maybe_pause();
-        } else {
-            // Ainda em pausa, retorna sem emitir
+            // After triggering pause, we're now paused - skip this event
             return Ok(());
         }
-    } else {
-        // Não estamos em pausa, verifica se deve pausar
-        monitor.check_and_maybe_pause();
     }
 
-    // Se chegou aqui, pode emitir o evento
+    // Emit the event
     let event = event_builder();
     write_event(&event);
+
+    // After emission, check if we need to pause for NEXT event
+    monitor.check_and_maybe_pause();
 
     Ok(())
 }
@@ -283,6 +276,16 @@ pub fn emit_resume_with_backpressure(
         }
     })
 }
+
+/// Emite qualquer evento genérico passando pelo controle de backpressure.
+pub fn emit_event_with_backpressure(
+    monitor: &crate::infra::backpressure::BackpressureMonitor,
+    event: Event,
+) -> Result<(), crate::infra::backpressure::BackpressureConfigError> {
+    emit_with_backpressure(monitor, || event)
+}
+
+/// Emite qualquer evento genérico passando pelo controle de backpressure.
 
 #[cfg(test)]
 mod tests {
