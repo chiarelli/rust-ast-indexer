@@ -1,5 +1,5 @@
-use std::process::Command;
 use std::io;
+use std::process::Command;
 
 #[derive(Debug)]
 pub enum GitError {
@@ -22,7 +22,9 @@ fn run_git_command(dir: &str, args: &[&str]) -> Result<String> {
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-        if stderr.to_lowercase().contains("not a git repository") || stderr.contains("Repository not found") {
+        if stderr.to_lowercase().contains("not a git repository")
+            || stderr.contains("Repository not found")
+        {
             return Err(GitError::NotARepository);
         }
         return Err(GitError::CommandFailed(stderr));
@@ -34,7 +36,7 @@ fn run_git_command(dir: &str, args: &[&str]) -> Result<String> {
 
 /// Returns tracked files relative to repository root
 pub fn emit_git_tracked_files(path: &str) -> Result<Vec<String>> {
-    let out = run_git_command(path, &["ls-files", "--exclude-standard"]) ?;
+    let out = run_git_command(path, &["ls-files", "--exclude-standard"])?;
     let files = out
         .lines()
         .map(|s| s.trim().to_string())
@@ -58,16 +60,31 @@ pub fn get_git_diff_files(path: &str, from: &str, to: &str) -> Result<Vec<String
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::tempdir;
     use std::fs::File;
     use std::io::Write;
     use std::process::Command;
+    use tempfile::tempdir;
 
     fn init_repo(path: &std::path::Path) {
         let p = path.to_str().unwrap();
-        Command::new("git").arg("-C").arg(p).arg("init").output().expect("git init failed");
-        Command::new("git").arg("-C").arg(p).args(["config", "user.email", "you@example.com"]).output().unwrap();
-        Command::new("git").arg("-C").arg(p).args(["config", "user.name", "Tester"]).output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(p)
+            .arg("init")
+            .output()
+            .expect("git init failed");
+        Command::new("git")
+            .arg("-C")
+            .arg(p)
+            .args(["config", "user.email", "you@example.com"])
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(p)
+            .args(["config", "user.name", "Tester"])
+            .output()
+            .unwrap();
     }
 
     #[test]
@@ -85,8 +102,21 @@ mod tests {
         let file_path = td.path().join("foo.txt");
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "hello").unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("add").arg(".").output().unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("commit").arg("-m").arg("init").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("add")
+            .arg(".")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("commit")
+            .arg("-m")
+            .arg("init")
+            .output()
+            .unwrap();
 
         let files = emit_git_tracked_files(td.path().to_str().unwrap()).unwrap();
         assert_eq!(files, vec!["foo.txt".to_string()]);
@@ -98,14 +128,46 @@ mod tests {
         init_repo(td.path());
         let file_path = td.path().join("a.txt");
         File::create(&file_path).unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("add").arg(".").output().unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("commit").arg("-m").arg("first").output().unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("tag").arg("v1").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("add")
+            .arg(".")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("commit")
+            .arg("-m")
+            .arg("first")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("tag")
+            .arg("v1")
+            .output()
+            .unwrap();
 
         let mut f = File::create(&file_path).unwrap();
         writeln!(f, "change").unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("add").arg(".").output().unwrap();
-        Command::new("git").arg("-C").arg(td.path()).arg("commit").arg("-m").arg("second").output().unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("add")
+            .arg(".")
+            .output()
+            .unwrap();
+        Command::new("git")
+            .arg("-C")
+            .arg(td.path())
+            .arg("commit")
+            .arg("-m")
+            .arg("second")
+            .output()
+            .unwrap();
 
         let files = get_git_diff_files(td.path().to_str().unwrap(), "v1", "HEAD").unwrap();
         assert!(files.contains(&"a.txt".to_string()));

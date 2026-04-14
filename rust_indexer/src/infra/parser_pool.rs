@@ -1,9 +1,9 @@
 // ParserPool using LanguageAdapter instances per language
 // Thread-safe pool providing adapters for parsing
 
-use std::sync::Arc;
 use crate::adapters::LanguageAdapter;
 use dashmap::DashMap;
+use std::sync::Arc;
 
 pub struct ParserPool {
     adapters: DashMap<String, Arc<dyn LanguageAdapter>>,
@@ -48,12 +48,18 @@ mod tests {
     struct MockAdapter;
     impl LanguageAdapter for MockAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
-            Ok(ParsedFile { language: "mock".to_string(), source_len: source.len(), source: source.to_string() })
+            Ok(ParsedFile {
+                language: "mock".to_string(),
+                source_len: source.len(),
+                source: source.to_string(),
+            })
         }
         fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<Symbol>> {
             Ok(vec![])
         }
-        fn box_clone(&self) -> Box<dyn LanguageAdapter> { Box::new(MockAdapter) }
+        fn box_clone(&self) -> Box<dyn LanguageAdapter> {
+            Box::new(MockAdapter)
+        }
     }
 
     #[test]
@@ -86,9 +92,9 @@ mod tests {
 #[cfg(all(test, feature = "parsing"))]
 mod integration_tests {
     use super::*;
+    use crate::adapters::java::JavaAdapter;
     use crate::adapters::rust::RustAdapter;
     use crate::adapters::typescript::TypeScriptAdapter;
-    use crate::adapters::java::JavaAdapter;
 
     fn build_pool() -> ParserPool {
         let pool = ParserPool::new();
@@ -121,16 +127,26 @@ trait Repository {
         let parsed = adapter.parse_source(source).expect("parse should succeed");
         assert_eq!(parsed.language, "rust");
 
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
-        assert!(symbols.iter().any(|s| s.kind == "struct" && s.name == "Config"));
-        assert!(symbols.iter().any(|s| s.kind == "function" && s.name == "start"));
-        assert!(symbols.iter().any(|s| s.kind == "trait" && s.name == "Repository"));
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "struct" && s.name == "Config"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "function" && s.name == "start"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "trait" && s.name == "Repository"));
     }
 
     #[test]
     fn pool_parse_and_extract_typescript() {
         let pool = build_pool();
-        let adapter = pool.get("typescript").expect("typescript adapter should be registered");
+        let adapter = pool
+            .get("typescript")
+            .expect("typescript adapter should be registered");
 
         let source = r#"
 class UserService {
@@ -148,13 +164,29 @@ function getVersion() {
         let parsed = adapter.parse_source(source).expect("parse should succeed");
         assert_eq!(parsed.language, "typescript");
 
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
-        assert!(symbols.iter().any(|s| s.kind == "class" && s.name == "UserService"), 
-                "Expected class UserService, got: {:?}", 
-                symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>());
-        assert!(symbols.iter().any(|s| s.kind == "function" && s.name == "getVersion"),
-                "Expected function getVersion, got: {:?}",
-                symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>());
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.kind == "class" && s.name == "UserService"),
+            "Expected class UserService, got: {:?}",
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
+        );
+        assert!(
+            symbols
+                .iter()
+                .any(|s| s.kind == "function" && s.name == "getVersion"),
+            "Expected function getVersion, got: {:?}",
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -185,11 +217,21 @@ public class UserRepository {
         let parsed = adapter.parse_source(source).expect("parse should succeed");
         assert_eq!(parsed.language, "java");
 
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
-        assert!(symbols.iter().any(|s| s.kind == "class" && s.name == "UserRepository"));
-        assert!(symbols.iter().any(|s| s.kind == "constructor" && s.name == "UserRepository"));
-        assert!(symbols.iter().any(|s| s.kind == "method" && s.name == "add"));
-        assert!(symbols.iter().any(|s| s.kind == "field" && s.name == "users"));
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "class" && s.name == "UserRepository"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "constructor" && s.name == "UserRepository"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "method" && s.name == "add"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "field" && s.name == "users"));
     }
 
     #[test]
@@ -207,7 +249,9 @@ public class UserRepository {
     #[test]
     fn pool_parse_and_extract_javascript_alias() {
         let pool = build_pool();
-        let adapter = pool.get("javascript").expect("javascript adapter should be registered");
+        let adapter = pool
+            .get("javascript")
+            .expect("javascript adapter should be registered");
 
         let source = r#"
 function greet(name) {
@@ -219,9 +263,15 @@ const VERSION = "1.0.0";
         let parsed = adapter.parse_source(source).expect("parse should succeed");
         assert_eq!(parsed.language, "typescript");
 
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
-        assert!(symbols.iter().any(|s| s.kind == "function" && s.name == "greet"));
-        assert!(symbols.iter().any(|s| s.kind == "variable" && s.name == "VERSION"));
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "function" && s.name == "greet"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "variable" && s.name == "VERSION"));
     }
 
     #[test]
@@ -241,19 +291,31 @@ mod api {
 }
 "#;
         let parsed = adapter.parse_source(source).expect("parse should succeed");
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
 
         let kinds: Vec<&str> = symbols.iter().map(|s| s.kind.as_str()).collect();
         assert!(kinds.contains(&"mod"), "expected 'mod', got: {:?}", kinds);
-        assert!(kinds.contains(&"struct"), "expected 'struct', got: {:?}", kinds);
+        assert!(
+            kinds.contains(&"struct"),
+            "expected 'struct', got: {:?}",
+            kinds
+        );
         assert!(kinds.contains(&"impl"), "expected 'impl', got: {:?}", kinds);
-        assert!(kinds.contains(&"function"), "expected 'function', got: {:?}", kinds);
+        assert!(
+            kinds.contains(&"function"),
+            "expected 'function', got: {:?}",
+            kinds
+        );
     }
 
     #[test]
     fn pool_extract_nested_symbols_typescript() {
         let pool = build_pool();
-        let adapter = pool.get("typescript").expect("typescript adapter should be registered");
+        let adapter = pool
+            .get("typescript")
+            .expect("typescript adapter should be registered");
 
         let source = r#"
 class Database {
@@ -267,10 +329,16 @@ class Database {
 export const db = new Database();
 "#;
         let parsed = adapter.parse_source(source).expect("parse should succeed");
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
 
-        assert!(symbols.iter().any(|s| s.kind == "class" && s.name == "Database"));
-        assert!(symbols.iter().any(|s| s.kind == "method" && s.name == "connect"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "class" && s.name == "Database"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "method" && s.name == "connect"));
     }
 
     #[test]
@@ -292,22 +360,33 @@ public class OrderService {
 }
 "#;
         let parsed = adapter.parse_source(source).expect("parse should succeed");
-        let symbols = adapter.extract_symbols(&parsed).expect("extract should succeed");
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
 
-        assert!(symbols.iter().any(|s| s.kind == "class" && s.name == "OrderService"));
-        assert!(symbols.iter().any(|s| s.kind == "constructor" && s.name == "OrderService"));
-        assert!(symbols.iter().any(|s| s.kind == "method" && s.name == "findById"));
-        assert!(symbols.iter().any(|s| s.kind == "field" && s.name == "repository"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "class" && s.name == "OrderService"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "constructor" && s.name == "OrderService"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "method" && s.name == "findById"));
+        assert!(symbols
+            .iter()
+            .any(|s| s.kind == "field" && s.name == "repository"));
     }
 
     #[test]
     fn pool_empty_source_all_languages() {
         let pool = build_pool();
         for lang in &["rust", "typescript", "java"] {
-            let adapter = pool.get(lang).unwrap_or_else(|| panic!("{} adapter should exist", lang));
+            let adapter = pool
+                .get(lang)
+                .unwrap_or_else(|| panic!("{} adapter should exist", lang));
             let parsed = adapter.parse_source("").expect("empty source should parse");
             assert_eq!(parsed.source_len, 0);
         }
     }
 }
-
