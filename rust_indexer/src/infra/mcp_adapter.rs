@@ -68,6 +68,7 @@ impl JsonRpcResponse {
     }
 }
 
+#[allow(clippy::type_complexity)]
 pub struct McpAdapter {
     handlers: Arc<Mutex<HashMap<String, fn(Value) -> Result<Value, String>>>>,
 }

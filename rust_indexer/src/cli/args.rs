@@ -48,22 +48,20 @@ pub fn run_mcp_mode() {
     });
 
     let stdin = io::stdin();
-    for line in stdin.lock().lines() {
-        if let Ok(l) = line {
-            let l = l.trim();
-            if l.is_empty() {
-                continue;
-            }
+    for line in stdin.lock().lines().map_while(Result::ok) {
+        let l = line.trim();
+        if l.is_empty() {
+            continue;
+        }
 
-            match adapter.parse_request(l) {
-                Ok(req) => {
-                    let resp = adapter.handle_request(req);
-                    println!("{}", resp.to_value());
-                }
-                Err(e) => {
-                    let resp = crate::infra::mcp_adapter::JsonRpcResponse::error(None, -32600, &e);
-                    println!("{}", resp.to_value());
-                }
+        match adapter.parse_request(l) {
+            Ok(req) => {
+                let resp = adapter.handle_request(req);
+                println!("{}", resp.to_value());
+            }
+            Err(e) => {
+                let resp = crate::infra::mcp_adapter::JsonRpcResponse::error(None, -32600, &e);
+                println!("{}", resp.to_value());
             }
         }
     }
