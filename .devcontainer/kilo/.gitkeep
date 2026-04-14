@@ -1,0 +1,14 @@
+This folder contains the configuration and state files for the kilocode.kilo-code 
+extension for the development environment. This folder is mounted at source=${env:HOME}/home/vscode/.local/share/kilo.
+
+## Configuration
+
+Configuration files for the Kilo extension in the development environment.
+
+## Extension State
+
+State files that store conversation history, preference settings, and persistent data for the Kilo extension in this project.
+
+## How to Use
+
+The Kilo extension (kilocode.kilo-code) is automatically installed and configured in the development environment via devcontainer.json. Files in this folder are managed automatically by the extension.

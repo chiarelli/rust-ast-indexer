@@ -12,3 +12,4 @@ rust_indexer/target/
 .kilo/kilo.jsonc
 .kilo/
 .vscode/
+.devcontainer/kilo

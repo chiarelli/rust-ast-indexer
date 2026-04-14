@@ -74,3 +74,5 @@ RUN sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master
     && echo 'HISTSIZE=10000' >> /home/${USERNAME}/.zshrc \
     && echo 'SAVEHIST=10000' >> /home/${USERNAME}/.zshrc \
     && echo 'setopt share_history' >> /home/${USERNAME}/.zshrc
+
+RUN mkdir -p /home/${USERNAME}/.local/share/kilo

@@ -4,6 +4,7 @@ services:
     container_name: crush-dev
     volumes:
       - ..:/workspace
+      - ./kilo:/home/vscode/.local/share/kilo
     command: sleep infinity
 
   qdrant:

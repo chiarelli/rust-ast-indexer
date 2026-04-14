@@ -20,7 +20,8 @@
         "rufuswein.saveall",
         "Codeium.codeium",
         "usernamehw.errorlens",
-        "zwyx.remotetrash"
+        "zwyx.remotetrash",
+        "kilocode.kilo-code"
       ],
       "unwantedRecommendations": [
         "1YiB.rust-bundle",
