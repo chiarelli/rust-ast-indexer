@@ -48,6 +48,24 @@ impl JsonRpcResponse {
         }
     }
 
+    #[allow(dead_code)]
+    pub fn notification(_method: &str, params: Value) -> Self {
+        Self {
+            jsonrpc: "2.0".to_string(),
+            id: None,
+            result: Some(params),
+            error: None,
+        }
+    }
+
+    pub fn notification_to_value(method: &str, params: Value) -> Value {
+        json!({
+            "jsonrpc": "2.0",
+            "method": method,
+            "params": params
+        })
+    }
+
     pub fn to_value(&self) -> Value {
         if let Some(err) = &self.error {
             json!({
@@ -57,6 +75,11 @@ impl JsonRpcResponse {
                     "code": err.code,
                     "message": err.message
                 }
+            })
+        } else if self.id.is_none() {
+            json!({
+                "jsonrpc": self.jsonrpc,
+                "result": self.result
             })
         } else {
             json!({
@@ -214,5 +237,24 @@ mod tests {
         let resp = adapter.handle_request(req);
         assert!(resp.error.is_none());
         assert_eq!(resp.result.as_ref().unwrap()["echo"]["value"], 42);
+    }
+
+    #[test]
+    fn json_rpc_notification_has_no_id() {
+        let resp = JsonRpcResponse::notification("indexing/file", json!({ "file": "src/main.rs" }));
+        assert!(resp.id.is_none());
+        let value = resp.to_value();
+        assert!(value.get("id").is_none());
+    }
+
+    #[test]
+    fn json_rpc_notification_to_value() {
+        let value = JsonRpcResponse::notification_to_value(
+            "indexing/chunk",
+            json!({ "chunk_id": "chk_001", "size": 1234 }),
+        );
+        assert_eq!(value["jsonrpc"], "2.0");
+        assert_eq!(value["method"], "indexing/chunk");
+        assert!(value["params"].is_object());
     }
 }

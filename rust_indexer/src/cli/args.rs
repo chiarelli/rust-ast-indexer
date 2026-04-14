@@ -1,3 +1,5 @@
+use crate::infra::mcp_adapter::JsonRpcResponse;
+
 #[derive(Debug, Clone, Default)]
 pub struct CliArgs {
     pub mcp_mode: bool,
@@ -34,8 +36,59 @@ pub fn run_mcp_mode() {
         }))
     });
 
-    adapter.register_handler("index_path", |_params| {
-        Ok(json!({ "job_id": "async", "status": "started" }))
+    adapter.register_handler("index_path", |params| {
+        let path = params
+            .get("path")
+            .and_then(|v| v.as_str())
+            .unwrap_or("./src");
+
+        let job_id = format!(
+            "job_{}",
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap()
+                .as_millis()
+        );
+
+        println!(
+            "{}",
+            JsonRpcResponse::notification_to_value(
+                "indexing/start",
+                json!({
+                    "job_id": job_id,
+                    "path": path
+                })
+            )
+        );
+
+        if let Ok(files) = std::fs::read_dir(path) {
+            let mut file_count = 0;
+            for entry in files.flatten() {
+                if entry.file_type().map(|ft| ft.is_file()).unwrap_or(false) {
+                    file_count += 1;
+                    println!(
+                        "{}",
+                        JsonRpcResponse::notification_to_value(
+                            "indexing/file",
+                            json!({
+                                "file": entry.path().to_string_lossy()
+                            })
+                        )
+                    );
+                }
+            }
+            println!(
+                "{}",
+                JsonRpcResponse::notification_to_value(
+                    "indexing/complete",
+                    json!({
+                        "files": file_count
+                    })
+                )
+            );
+        }
+
+        Ok(json!({ "job_id": job_id, "status": "started" }))
     });
 
     adapter.register_handler("stop", |_| Ok(json!({ "status": "stopped" })));
