@@ -1,3 +1,4 @@
+pub mod args;
 pub mod dispatcher;
 
 #[cfg(test)]
@@ -9,7 +10,6 @@ use std::thread;
 
 use crate::application::indexer::{IndexOptions, Indexer};
 use crate::application::protocol::{Command, Event};
-use crate::infra::backpressure::BackpressureMonitor;
 use crate::infra::jsonl;
 
 use std::sync::Arc;
