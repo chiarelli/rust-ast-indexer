@@ -1,7 +1,7 @@
 # Examples - Tasks
 
 ## Task 1: Node.js Basic Example
-- Fase: fase-1
+- Fase: fase-1 ✅ CONCLUÍDA
 - Arquivos: `examples/nodejs/basic_indexer.js`, `examples/nodejs/package.json`
 - Descrição: Criar exemplo mínimo que demonstra list_languages e index_path usando child_process.spawn
 - Critério: Script executa list_languages e index_path, loga chunks emitidos
@@ -49,7 +49,7 @@
 - Validação: Executa build + test + index em loop
 
 ## Task 7: Docker Compose Example
-- Fase: fase-4
+- Fase: fase-4 ✅ CONCLUÍDA
 - Arquivos: `examples/docker/docker-compose.yml`, `examples/docker/Dockerfile`
 - Descrição: Compose file com indexer service rodando em container
 - Critério: Compose file com indexer service
@@ -60,10 +60,10 @@
 
 ## Checklist de Validação
 
-- [ ] Node.js basic executa e loga linguagens + chunks
+- [x] Node.js basic executa e loga linguagens + chunks
 - [ ] Node.js incremental demonstra Git diff
 - [ ] Python basic funciona equivalente ao Node
 - [ ] Python streaming processa eventos corretamente
 - [ ] Go example compila e executa
 - [ ] CI script executa sem erros
-- [ ] Docker compose inicia corretamente
+- [x] Docker compose inicia corretamente
