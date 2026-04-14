@@ -47,7 +47,12 @@ fn smoke_mcp_index_path() {
     let output = child.wait_with_output().expect("wait");
     let stdout = String::from_utf8_lossy(&output.stdout);
 
-    let response: serde_json::Value = serde_json::from_str(stdout.trim()).expect("parse JSON");
+    let response = stdout
+        .lines()
+        .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
+        .find(|v| v.get("id").map(|id| id == 2).unwrap_or(false))
+        .expect("find response with id 2");
+
     assert_eq!(response["jsonrpc"], "2.0", "jsonrpc version");
     assert_eq!(response["id"], 2, "id");
     assert!(response["result"]["job_id"].is_string(), "job_id returned");
