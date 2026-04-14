@@ -110,8 +110,10 @@ impl BackpressureMonitor {
     /// Retorna `true` se o evento foi emitido.
     pub fn check_and_maybe_resume(&self) -> bool {
         let size = self.current_queue_size();
+        let is_paused = self.is_paused();
+        let should_resume = self.config.should_resume(size);
 
-        if self.is_paused() && self.config.should_resume(size) {
+        if is_paused && should_resume {
             let payload = PauseResumePayload {
                 reason: PauseResumeReason::Resume(ResumeReason::QueueUnderThreshold),
                 threshold: self.config.resume_threshold(),

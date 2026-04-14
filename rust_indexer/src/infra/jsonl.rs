@@ -3,9 +3,6 @@ use crate::{
     domain::types::{CallEdge, ImportEdge},
 };
 
-// O módulo backpressure já existe em infra/backpressure/
-// Não declare novamente aqui
-
 pub fn write_event(e: &Event) {
     let s = serde_json::to_string(e).unwrap_or_else(|_| "{}".into());
     println!("{}", s);
