@@ -1,32 +1,32 @@
 #[cfg(feature = "parsing")]
-mod typescript_adapter {
+mod python_adapter {
     use crate::adapters::LanguageAdapter;
     use crate::domain::parser::ParsedFile;
     use crate::domain::types::Symbol;
     use anyhow::Result;
     use tree_sitter::{Parser, Tree};
 
-    fn ts_language() -> tree_sitter::Language {
-        tree_sitter_typescript::language_typescript()
+    fn python_language() -> tree_sitter::Language {
+        tree_sitter_python::language()
     }
 
-    pub struct TypeScriptAdapter;
+    pub struct PythonAdapter;
 
-    impl Default for TypeScriptAdapter {
+    impl Default for PythonAdapter {
         fn default() -> Self {
             Self
         }
     }
 
-    impl TypeScriptAdapter {
+    impl PythonAdapter {
         pub fn new() -> Self {
-            TypeScriptAdapter
+            PythonAdapter
         }
 
         fn parse_tree(&self, source: &str) -> Result<(Tree, String)> {
             let mut parser = Parser::new();
             parser
-                .set_language(ts_language())
+                .set_language(python_language())
                 .map_err(|e| anyhow::anyhow!("set_language failed: {:?}", e))?;
             let tree = parser
                 .parse(source, None)
@@ -36,59 +36,60 @@ mod typescript_adapter {
 
         fn node_type(kind: &str) -> Option<&str> {
             match kind {
-                "function_declaration" | "arrow_function" | "function_expression" => {
-                    Some("function")
-                }
-                "class_declaration" => Some("class"),
-                "enum_declaration" => Some("enum"),
-                "interface_declaration" => Some("interface"),
-                "type_alias_declaration" => Some("type"),
-                "import_statement" | "import_declaration" => Some("import"),
-                "export_statement" => Some("export"),
-                "lexical_declaration" | "variable_declaration" => Some("variable"),
-                "method_definition" => Some("method"),
+                "function_definition" => Some("function"),
+                "class_definition" => Some("class"),
+                "decorated_definition" => Some("decorated"),
+                "lambda" => Some("function"),
+                "assignment" => Some("variable"),
+                "import_statement" | "import_from_statement" => Some("import"),
+                "async_function_definition" => Some("function"),
                 _ => None,
             }
         }
 
         fn extract_name(node: &tree_sitter::Node, source: &str) -> String {
-            // Special handling for declarations where name is in child
             match node.kind() {
-                "lexical_declaration" | "variable_declaration" => {
-                    // Look for variable_declarator children with name field
-                    for i in 0..node.child_count() {
+                "decorated_definition" => {
+                    // The actual definition is the last child
+                    for i in (0..node.child_count()).rev() {
                         if let Some(child) = node.child(i) {
-                            if child.kind() == "variable_declarator" {
-                                if let Some(name_node) = child.child_by_field_name("name") {
-                                    if let Ok(text) = name_node.utf8_text(source.as_bytes()) {
-                                        return text.to_string();
-                                    }
-                                }
+                            let name = Self::extract_name(&child, source);
+                            if name != "decorated" && name != "decorator" {
+                                return name;
                             }
                         }
                     }
-                    "variable".to_string()
+                    "decorated".to_string()
                 }
-                "import_statement" | "import_declaration" => {
-                    // Try "source" for import source path, or first identifier
+                "import_statement" | "import_from_statement" => {
+                    // Extract module name from import
+                    // "import os" -> "os", "from os.path import join" -> "os.path"
                     for i in 0..node.child_count() {
                         if let Some(child) = node.child(i) {
-                            if child.kind() == "string" {
-                                if let Ok(text) = child.utf8_text(source.as_bytes()) {
-                                    return text.to_string();
+                            match child.kind() {
+                                "dotted_name" | "relative_import" => {
+                                    if let Ok(text) = child.utf8_text(source.as_bytes()) {
+                                        return text.to_string();
+                                    }
                                 }
-                            }
-                            if child.kind() == "identifier" {
-                                if let Ok(text) = child.utf8_text(source.as_bytes()) {
-                                    return text.to_string();
-                                }
+                                _ => {}
                             }
                         }
                     }
                     "import".to_string()
                 }
+                "assignment" => {
+                    // Left side of assignment is the variable name
+                    if let Some(left) = node.child_by_field_name("left") {
+                        if let Ok(text) = left.utf8_text(source.as_bytes()) {
+                            // Handle tuple unpacking: just take the full text
+                            return text.to_string();
+                        }
+                    }
+                    "variable".to_string()
+                }
                 _ => {
-                    // Standard: try "name" field or first identifier child
+                    // Standard: try "name" field
                     if let Some(name_node) = node.child_by_field_name("name") {
                         if let Ok(text) = name_node.utf8_text(source.as_bytes()) {
                             return text.to_string();
@@ -120,39 +121,43 @@ mod typescript_adapter {
                 let node = cursor.node();
                 let kind = node.kind();
 
-                // Skip ERROR nodes (TypeScript syntax not parsed by JS)
-                if kind != "ERROR" {
-                    if let Some(symbol_kind) = Self::node_type(kind) {
-                        let name = Self::extract_name(&node, source);
-                        let start_line = node.start_position().row;
-                        let end_line = node.end_position().row;
-                        let signature = node
-                            .utf8_text(source.as_bytes())
-                            .ok()
-                            .map(|s| s.to_string());
-                        let id = format!("{}:{}", file_path, name);
+                if let Some(symbol_kind) = Self::node_type(kind) {
+                    let name = Self::extract_name(&node, source);
+                    let start_line = node.start_position().row;
+                    let end_line = node.end_position().row;
+                    let signature = node
+                        .utf8_text(source.as_bytes())
+                        .ok()
+                        .map(|s| s.to_string());
+                    let id = format!("{}:{}", file_path, name);
 
-                        symbols.push(Symbol {
-                            id,
-                            name: name.clone(),
-                            kind: symbol_kind.to_string(),
-                            scope: scope.map(String::from),
-                            file_path: file_path.to_string(),
-                            start_line,
-                            end_line,
-                            signature,
-                        });
+                    symbols.push(Symbol {
+                        id,
+                        name: name.clone(),
+                        kind: symbol_kind.to_string(),
+                        scope: scope.map(String::from),
+                        file_path: file_path.to_string(),
+                        start_line,
+                        end_line,
+                        signature,
+                    });
 
-                        // Update scope when descending into classes/functions
-                        let new_scope = name.clone();
-                        if cursor.goto_first_child() {
-                            Self::walk_tree(cursor, source, file_path, Some(&new_scope), symbols);
-                            cursor.goto_parent();
-                        }
-                    } else if node.child_count() > 0 && cursor.goto_first_child() {
+                    // Update scope when descending into classes/functions
+                    let new_scope = name.clone();
+                    if cursor.goto_first_child() {
+                        Self::walk_tree(cursor, source, file_path, Some(&new_scope), symbols);
+                        cursor.goto_parent();
+                    }
+                } else if kind == "ERROR" {
+                    // Skip ERROR nodes silently
+                    // Just descend to see if children have valid nodes
+                    if cursor.goto_first_child() {
                         Self::walk_tree(cursor, source, file_path, scope, symbols);
                         cursor.goto_parent();
                     }
+                } else if node.child_count() > 0 && cursor.goto_first_child() {
+                    Self::walk_tree(cursor, source, file_path, scope, symbols);
+                    cursor.goto_parent();
                 }
 
                 if !cursor.goto_next_sibling() {
@@ -161,7 +166,7 @@ mod typescript_adapter {
             }
         }
 
-        // Collect import edges by traversing the tree and matching "import_declaration"/"import_statement" nodes
+        // Collect import edges by traversing the tree
         fn collect_imports(
             cursor: &mut tree_sitter::TreeCursor,
             source: &str,
@@ -172,7 +177,7 @@ mod typescript_adapter {
                 let node = cursor.node();
                 let kind = node.kind();
 
-                if kind == "import_declaration" || kind == "import_statement" {
+                if kind == "import_statement" || kind == "import_from_statement" {
                     let start = node.start_position();
                     let end = node.end_position();
                     let text = node
@@ -220,7 +225,7 @@ mod typescript_adapter {
             Ok(edges)
         }
 
-        // Collect call edges by traversing the tree and matching "call_expression"/"new_expression" nodes
+        // Collect call edges by traversing the tree
         fn collect_calls(
             cursor: &mut tree_sitter::TreeCursor,
             source: &str,
@@ -231,57 +236,19 @@ mod typescript_adapter {
                 let node = cursor.node();
                 let kind = node.kind();
 
-                if kind == "call_expression" || kind == "new_expression" {
+                if kind == "call" {
                     let start = node.start_position();
                     let end = node.end_position();
-                    // try to get callee text (prefer direct child), fallback to full node text
-                    let raw_callee = if kind == "call_expression" {
-                        node.child(0)
-                            .and_then(|c| c.utf8_text(source.as_bytes()).ok())
-                            .unwrap_or_default()
-                    } else {
-                        node.child(1)
-                            .and_then(|c| c.utf8_text(source.as_bytes()).ok())
-                            .unwrap_or_default()
-                    };
-                    // derive a canonical callee name: take last identifier after '.' or '::', strip args
-                    let mut callee = raw_callee.to_string();
-                    if callee.is_empty() {
-                        callee = node
-                            .utf8_text(source.as_bytes())
-                            .unwrap_or_default()
-                            .to_string();
-                    }
-                    // remove leading "new " if present
-                    if callee.starts_with("new ") {
-                        callee = callee[4..].to_string();
-                    }
-                    // cut off at first '(' if present
-                    if let Some(pos) = callee.find('(') {
-                        callee = callee[..pos].to_string();
-                    }
-                    // take last path segment after '.' or ':' characters
-                    if callee.contains('.') || callee.contains(':') || callee.contains('?') {
-                        let parts: Vec<&str> = callee.split(['.', ':', '?']).collect();
-                        if let Some(last) = parts.last() {
-                            callee = last.to_string();
-                        }
-                    }
-                    callee = callee.trim().to_string();
 
-                    // Determine if this is a dynamic call (e.g., import(), optional chaining)
-                    let is_dynamic = if kind == "call_expression" {
-                        // Check if it's an import() call or has optional chaining markers
-                        let text = node.utf8_text(source.as_bytes()).unwrap_or_default();
-                        text.contains("import(") || text.contains("?.(")
-                    } else {
-                        false
-                    };
+                    // Try to get callee as the function child (first child by field or position)
+                    let callee = node
+                        .child_by_field_name("function")
+                        .or_else(|| node.child(0))
+                        .and_then(|c| c.utf8_text(source.as_bytes()).ok())
+                        .map(|s| s.to_string())
+                        .unwrap_or_default();
 
-                    // simple heuristic for call kind
-                    let call_kind = if is_dynamic { "dynamic" } else { "static" };
-
-                    // Determine caller by searching ancestors for a function-like node
+                    // Determine caller by searching ancestors
                     let mut caller_id = None;
                     let mut ancestor = node.parent();
                     while let Some(a) = ancestor {
@@ -293,10 +260,12 @@ mod typescript_adapter {
                         ancestor = a.parent();
                     }
 
+                    let call_kind = if callee.contains('.') { "dynamic" } else { "static" };
+
                     let edge = crate::domain::types::CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
                         caller_symbol_id: caller_id,
-                        callee_name: callee.clone(),
+                        callee_name: callee,
                         callee_symbol_id: None,
                         call_kind: call_kind.to_string(),
                         location: crate::domain::types::Location {
@@ -333,11 +302,11 @@ mod typescript_adapter {
         }
     }
 
-    impl LanguageAdapter for TypeScriptAdapter {
+    impl LanguageAdapter for PythonAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
             let (_, source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
-                language: "typescript".to_string(),
+                language: "python".to_string(),
                 source_len: source_str.len(),
                 source: source_str,
             })
@@ -355,31 +324,30 @@ mod typescript_adapter {
             &self,
             parsed: &ParsedFile,
         ) -> Result<Vec<crate::domain::types::ImportEdge>> {
-            TypeScriptAdapter::extract_imports(self, parsed)
+            PythonAdapter::extract_imports(self, parsed)
         }
 
         fn extract_calls(
             &self,
             parsed: &ParsedFile,
         ) -> Result<Vec<crate::domain::types::CallEdge>> {
-            TypeScriptAdapter::extract_calls(self, parsed)
+            PythonAdapter::extract_calls(self, parsed)
         }
 
         fn box_clone(&self) -> Box<dyn LanguageAdapter> {
-            Box::new(TypeScriptAdapter::new())
+            Box::new(PythonAdapter::new())
         }
     }
 
     pub fn register_to(registry: &crate::app::bootstrap::Registry) {
-        crate::register_language_adapter!(registry, "typescript", TypeScriptAdapter::new());
-        crate::register_language_adapter!(registry, "javascript", TypeScriptAdapter::new());
+        crate::register_language_adapter!(registry, "python", PythonAdapter::new());
     }
 }
 
 #[cfg(not(feature = "parsing"))]
-mod typescript_adapter {
+mod python_adapter {
     // stub implementation when parsing feature not enabled
 }
 
 #[cfg(feature = "parsing")]
-pub use typescript_adapter::*;
+pub use python_adapter::*;

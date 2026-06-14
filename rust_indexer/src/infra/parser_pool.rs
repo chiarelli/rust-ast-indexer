@@ -95,6 +95,8 @@ mod integration_tests {
     use crate::adapters::java::JavaAdapter;
     use crate::adapters::rust::RustAdapter;
     use crate::adapters::typescript::TypeScriptAdapter;
+    use crate::adapters::go::GoAdapter;
+    use crate::adapters::python::PythonAdapter;
 
     fn build_pool() -> ParserPool {
         let pool = ParserPool::new();
@@ -102,6 +104,8 @@ mod integration_tests {
         pool.register("typescript", Arc::new(TypeScriptAdapter));
         pool.register("javascript", Arc::new(TypeScriptAdapter));
         pool.register("java", Arc::new(JavaAdapter));
+        pool.register("go", Arc::new(GoAdapter));
+        pool.register("python", Arc::new(PythonAdapter));
         pool
     }
 
@@ -243,7 +247,9 @@ public class UserRepository {
         assert!(langs.contains(&"typescript".to_string()));
         assert!(langs.contains(&"javascript".to_string()));
         assert!(langs.contains(&"java".to_string()));
-        assert_eq!(langs.len(), 4);
+        assert!(langs.contains(&"go".to_string()));
+        assert!(langs.contains(&"python".to_string()));
+        assert_eq!(langs.len(), 6);
     }
 
     #[test]
@@ -381,12 +387,62 @@ public class OrderService {
     #[test]
     fn pool_empty_source_all_languages() {
         let pool = build_pool();
-        for lang in &["rust", "typescript", "java"] {
+        for lang in &["rust", "typescript", "java", "go", "python"] {
             let adapter = pool
                 .get(lang)
                 .unwrap_or_else(|| panic!("{} adapter should exist", lang));
             let parsed = adapter.parse_source("").expect("empty source should parse");
             assert_eq!(parsed.source_len, 0);
         }
+    }
+
+    #[test]
+    fn pool_parse_and_extract_python() {
+        let pool = build_pool();
+        let adapter = pool.get("python").expect("python adapter should be registered");
+
+        let source = r#"
+import json
+from typing import Optional
+
+CONFIG_FILE = "settings.json"
+
+class AppConfig:
+    port = 8080
+    host = "localhost"
+
+    def get_url(self) -> str:
+        return f"http://{self.host}:{self.port}"
+
+def start_server(config: AppConfig) -> None:
+    print(f"Starting on {config.get_url()}")
+"#;
+        let parsed = adapter.parse_source(source).expect("parse should succeed");
+        assert_eq!(parsed.language, "python");
+
+        let symbols = adapter
+            .extract_symbols(&parsed)
+            .expect("extract should succeed");
+
+        assert!(
+            symbols.iter().any(|s| s.kind == "class" && s.name == "AppConfig"),
+            "Expected class AppConfig, got: {:?}",
+            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+        );
+        assert!(
+            symbols.iter().any(|s| s.kind == "function" && s.name == "start_server"),
+            "Expected function start_server, got: {:?}",
+            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+        );
+        assert!(
+            symbols.iter().any(|s| s.kind == "function" && s.name == "get_url"),
+            "Expected function get_url (method), got: {:?}",
+            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+        );
+        assert!(
+            symbols.iter().any(|s| s.kind == "import"),
+            "Expected an import, got: {:?}",
+            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+        );
     }
 }

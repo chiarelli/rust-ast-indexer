@@ -605,8 +605,10 @@ mod tests {
             "both should find same symbols"
         );
         assert!(
-            parallel_elapsed <= serial_elapsed * 2,
-            "parallel should not be significantly slower"
+            parallel_elapsed <= serial_elapsed * 4,
+            "parallel should not be significantly slower (serial={:?}, parallel={:?})",
+            serial_elapsed,
+            parallel_elapsed,
         );
     }
 

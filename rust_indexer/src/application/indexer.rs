@@ -25,6 +25,8 @@ fn detect_language(path: &str) -> Option<String> {
         Some("ts") | Some("tsx") => Some("typescript".to_string()),
         Some("js") | Some("jsx") => Some("javascript".to_string()),
         Some("java") => Some("java".to_string()),
+        Some("go") => Some("go".to_string()),
+        Some("py") => Some("python".to_string()),
         Some(_) => None,
         None => None,
     }

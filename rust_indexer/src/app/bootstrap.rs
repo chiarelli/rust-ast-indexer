@@ -161,6 +161,8 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
         crate::adapters::rust::register_to(&registry);
         crate::adapters::typescript::register_to(&registry);
         crate::adapters::java::register_to(&registry);
+        crate::adapters::go::register_to(&registry);
+        crate::adapters::python::register_to(&registry);
     }
 
     // register same adapters into the pool for per-language parsing
@@ -176,6 +178,12 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
             Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()),
         );
         pool.register("java", Arc::new(crate::adapters::java::JavaAdapter::new()));
+        pool.register("go", Arc::new(crate::adapters::go::GoAdapter::new()));
+        pool.register("python", Arc::new(crate::adapters::python::PythonAdapter::new()));
+        pool.register(
+            "tsx",
+            Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()),
+        );
     }
 
     Arc::new(ApplicationContext {

@@ -4,6 +4,7 @@ pub mod rust;
 pub mod typescript;
 pub mod java;
 pub mod go;
+pub mod python;
 #[cfg(all(test, feature = "parsing"))]
 mod rust_tests;
 #[cfg(all(test, feature = "parsing"))]
@@ -12,6 +13,8 @@ mod typescript_tests;
 mod java_tests;
 #[cfg(all(test, feature = "parsing"))]
 mod go_tests;
+#[cfg(all(test, feature = "parsing"))]
+mod python_tests;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {

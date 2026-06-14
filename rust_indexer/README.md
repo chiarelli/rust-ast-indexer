@@ -7,12 +7,16 @@ Arquitetura DDD-lite com módulos: domain, application, infra, cli.
 
 ## Funcionalidades
 
-| Linguagem   | Parser                  | Símbolos Suportados                           |
-|-------------|-------------------------|-----------------------------------------------|
-| Rust        | tree-sitter-rust        | fn, struct, enum, impl, trait, mod, use, const, static |
-| TypeScript  | tree-sitter-javascript  | function, class, method, import, export, var  |
-| JavaScript  | tree-sitter-javascript  | function, class, method, import, export, var  |
-| Java        | tree-sitter-java        | class, method, enum, interface, constructor, field, import |
+| Linguagem   | Parser                         | Símbolos Suportados                                           |
+|-------------|--------------------------------|---------------------------------------------------------------|
+| Rust        | tree-sitter-rust               | fn, struct, enum, impl, trait, mod, use, const, static         |
+| TypeScript  | tree-sitter-typescript         | function, class, method, interface, enum, type, import, export, variable |
+| JavaScript  | tree-sitter-javascript         | function, class, method, import, export, variable              |
+| Python      | tree-sitter-python             | function, async function, class, variable, import, decorated   |
+| Java        | tree-sitter-java               | class, method, enum, interface, constructor, field, import     |
+| Go          | tree-sitter-go                 | function, struct, interface, method, import                    |
+
+> **Nota:** TypeScript usa a grammar nativa `tree-sitter-typescript` — suporte completo a TSX, interfaces, type aliases e imports no estilo ES module. Python extrai funções síncronas e assíncronas, classes decoradas, e variáveis de módulo.
 
 ## Pré-requisitos
 
@@ -58,7 +62,9 @@ Ou use `make test`, `make unit`, `make bench` — veja [Comandos do Make](#coman
 |------------|----------|-------------------|---------|
 | Tempo      | 105.6 ms | 28.6 ms           | **3.69x** |
 
-### Throughput (arquivos/s, símbolos/s)
+> **Nota:** Em ambientes com recursos limitados (1 CPU core / containers), o paralelo pode ser mais lento que o serial devido ao overhead de threads. Ajuste `MAX_CONCURRENCY=1` no ambiente ou use `cargo test --lib` para pular benchmarks.
+
+### Throughput (arquivos/s, símbolos/s) — 3 linguagens (Rust + TS + Go + Python + Java)
 
 | Arquivos  | Arquivos/segundo | Símbolos/segundo | Tempo aprox. |
 |-----------|-------------------|-------------------|--------------|
@@ -67,16 +73,16 @@ Ou use `make test`, `make unit`, `make bench` — veja [Comandos do Make](#coman
 | 200       | 6,606             | 24,212            | ~30 ms       |
 
 **Destaques:**
-- **3.69x de speedup** com Rayon sobre execução serial
+- **3.69x de speedup** com Rayon sobre execução serial (em ambiente multicore)
 - **Throughput consistente** entre 6K-7K arquivos/s sem degradação com volume
-- **24K-26K símbolos/s** — Tree-sitter parsing eficiente em 3 linguagens simultaneamente
+- **24K-26K símbolos/s** — Tree-sitter parsing eficiente em 6 linguagens simultaneamente
 - **Escalabilidade linear** — paralelismo não introduz overhead significativo
 
 ## Arquitetura
 
 ```
 src/
-├── adapters/          # Language adapters (Rust, TS, Java)
+├── adapters/          # Language adapters (Rust, TS, Python, Java, Go)
 ├── application/       # Indexer service
 ├── domain/            # Domain types, parser, normalize
 ├── infra/             # ParserPool, walker, benchmarks

@@ -25,7 +25,14 @@ tree-sitter = "0.20"
 
 # add tree-sitter-rust as optional feature during CI/dev
 [features]
-parsing = ["tree-sitter-rust", "tree-sitter-javascript", "tree-sitter-java", "tree-sitter-go"]
+parsing = [
+  "tree-sitter-rust",
+  "tree-sitter-javascript",
+  "tree-sitter-typescript",
+  "tree-sitter-java",
+  "tree-sitter-go",
+  "tree-sitter-python",
+]
 token_counting = ["dep:wordchipper"]
 
 [dependencies.tree-sitter-rust]
@@ -33,6 +40,10 @@ version = "0.20"
 optional = true
 
 [dependencies.tree-sitter-javascript]
+version = "0.20"
+optional = true
+
+[dependencies.tree-sitter-typescript]
 version = "0.20"
 optional = true
 
@@ -44,6 +55,9 @@ optional = true
 version = "0.20"
 optional = true
 
+[dependencies.tree-sitter-python]
+version = "0.20"
+optional = true
 
 
 [dev-dependencies]
