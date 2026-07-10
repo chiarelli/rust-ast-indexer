@@ -198,33 +198,6 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
                 match result {
                     Ok(result) => {
-                        for chunk in &result.chunks {
-                            let ev = Event {
-                                protocol_version: "1.0.0".into(),
-                                r#type: "event".into(),
-                                event: "chunk_emitted".into(),
-                                job_id: Some(job_id.clone()),
-                                payload: Some(json!({
-                                    "chunk_id": chunk.id,
-                                    "chunk_kind": "Symbol",
-                                    "file": chunk.file_path,
-                                    "language": chunk.language,
-                                    "symbol_id": chunk.symbol_id,
-                                    "start_line": chunk.start_line,
-                                    "end_line": chunk.end_line,
-                                    "text": chunk.text,
-                                    "chunk_md5": chunk.md5,
-                                    "size": chunk.size
-                                })),
-                            };
-                            if let Some(ref monitor) = bp_monitor {
-                                let _ =
-                                    crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
-                            } else {
-                                jsonl::write_event(&ev);
-                            }
-                        }
-
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -235,13 +208,9 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             ),
                         };
                         if let Some(ref monitor) = bp_monitor {
-                            // Check for resume before completing the job
-                            // This ensures resume event is emitted before job_completed
-                            // when the queue has been cleared
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            // Cleanup: remove monitor from global map when job completes
                             ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
@@ -266,7 +235,6 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         } else {
                             jsonl::write_event(&ev_error);
                         }
-
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -275,13 +243,9 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
                         if let Some(ref monitor) = bp_monitor {
-                            // Check for resume before completing the job
-                            // This ensures resume event is emitted before job_completed
-                            // when the queue has been cleared
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            // Cleanup: remove monitor from global map when job completes (even on error)
                             ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
@@ -541,33 +505,6 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
                 match result {
                     Ok(result) => {
-                        for chunk in &result.chunks {
-                            let ev = Event {
-                                protocol_version: "1.0.0".into(),
-                                r#type: "event".into(),
-                                event: "chunk_emitted".into(),
-                                job_id: Some(job_id.clone()),
-                                payload: Some(json!({
-                                    "chunk_id": chunk.id,
-                                    "chunk_kind": "Symbol",
-                                    "file": chunk.file_path,
-                                    "language": chunk.language,
-                                    "symbol_id": chunk.symbol_id,
-                                    "start_line": chunk.start_line,
-                                    "end_line": chunk.end_line,
-                                    "text": chunk.text,
-                                    "chunk_md5": chunk.md5,
-                                    "size": chunk.size
-                                })),
-                            };
-                            if let Some(ref monitor) = bp_monitor {
-                                let _ =
-                                    crate::infra::jsonl::emit_event_with_backpressure(monitor, ev);
-                            } else {
-                                jsonl::write_event(&ev);
-                            }
-                        }
-
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -578,13 +515,9 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             ),
                         };
                         if let Some(ref monitor) = bp_monitor {
-                            // Check for resume before completing the job
-                            // This ensures resume event is emitted before job_completed
-                            // when the queue has been cleared
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            // Cleanup: remove monitor from global map when job completes
                             ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
@@ -609,7 +542,6 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         } else {
                             jsonl::write_event(&ev_error);
                         }
-
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -618,13 +550,9 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
                         if let Some(ref monitor) = bp_monitor {
-                            // Check for resume before completing the job
-                            // This ensures resume event is emitted before job_completed
-                            // when the queue has been cleared
                             monitor.check_and_maybe_resume();
                             let _ =
                                 crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            // Cleanup: remove monitor from global map when job completes (even on error)
                             ctx.backpressure_monitors.remove(&job_id);
                         } else {
                             jsonl::write_event(&ev_done);
