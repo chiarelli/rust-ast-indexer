@@ -60,7 +60,7 @@ fn smoke_backpressure_emits_pause_and_resume_events() {
             "options": {
                 "max_concurrency": 1,
                 "backpressure": {
-                    "max_queue_size": 5,
+                    "max_queue_size": 10,
                     "threshold_percent": 80,
                     "ack_required": false,
                     "pause_timeout_secs": 30
@@ -86,7 +86,7 @@ fn smoke_backpressure_emits_pause_and_resume_events() {
             assert!(ev["payload"]["backpressure_active"]
                 .as_bool()
                 .unwrap_or(false));
-            assert!(ev["payload"]["current_size"].as_u64().unwrap() >= 5);
+            assert!(ev["payload"]["current_size"].as_u64().unwrap() >= 10);
 
             // Give indexer time to process the pause state before sending ack
             std::thread::sleep(std::time::Duration::from_millis(200));

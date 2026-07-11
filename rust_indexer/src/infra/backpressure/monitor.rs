@@ -1,8 +1,8 @@
 use std::sync::{
     atomic::{AtomicBool, AtomicUsize},
-    Arc, Mutex,
+    Arc, Condvar, Mutex,
 };
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::{
     application::protocol::Event,
@@ -25,6 +25,8 @@ pub struct BackpressureMonitor {
     queue_size: Arc<AtomicUsize>,
     paused: Arc<AtomicBool>,
     paused_since: Arc<Mutex<Option<Instant>>>,
+    pause_mtx: Mutex<()>,
+    pause_cv: Condvar,
     job_id: JobId,
 }
 
@@ -51,6 +53,8 @@ impl BackpressureMonitor {
             queue_size: Arc::new(AtomicUsize::new(initial_size)),
             paused: Arc::new(AtomicBool::new(false)),
             paused_since: Arc::new(Mutex::new(None)),
+            pause_mtx: Mutex::new(()),
+            pause_cv: Condvar::new(),
             job_id,
         })
     }
@@ -77,6 +81,33 @@ impl BackpressureMonitor {
     /// Retorna o estado atual de pausa (true se backpressure está ativo).
     pub fn is_paused(&self) -> bool {
         self.paused.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Bloqueia a thread atual até que o estado paused seja desfeito
+    /// (via ACK do consumidor ou timeout de pausa).
+    ///
+    /// Usa Condvar com timeout de 1s para permitir verificação periódica
+    /// do timeout de pausa. Retorna quando o estado paused é desfeito.
+    pub fn wait_until_resumed(&self) {
+        let mut guard = self.pause_mtx.lock().unwrap();
+        while self.is_paused() {
+            guard = self
+                .pause_cv
+                .wait_timeout(guard, Duration::from_secs(1))
+                .unwrap()
+                .0;
+            // A cada 1s verifica se o timeout de pausa expirou
+            self.check_timeout();
+        }
+    }
+
+    /// Notifica todas as threads bloqueadas em wait_until_resumed.
+    ///
+    /// A notificação é feita SEM lock do pause_mtx para evitar que
+    /// os waiters acordem e tentem re-adquirir o lock
+    /// enquanto o notifier ainda o segura (thundering herd).
+    fn notify_waiters(&self) {
+        self.pause_cv.notify_all();
     }
 
     /// Verifica se deve emitir evento de pause e atualiza o estado.
@@ -142,6 +173,7 @@ impl BackpressureMonitor {
             self.paused
                 .store(false, std::sync::atomic::Ordering::SeqCst);
             *self.paused_since.lock().unwrap() = None;
+            self.notify_waiters();
             true
         } else {
             false
@@ -181,6 +213,7 @@ impl BackpressureMonitor {
                     payload: serde_json::to_value(&payload).ok(),
                 };
                 jsonl::write_event(&event);
+                self.notify_waiters();
                 return true;
             }
         }
@@ -228,13 +261,7 @@ impl BackpressureMonitor {
         self.reset_queue();
         self.paused
             .store(false, std::sync::atomic::Ordering::SeqCst);
-        self.check_and_maybe_resume();
-    }
-}
-
-impl Drop for BackpressureMonitor {
-    fn drop(&mut self) {
-        // Limpeza opcional ao encerrar
+        self.notify_waiters();
     }
 }
 

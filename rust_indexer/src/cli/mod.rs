@@ -196,6 +196,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
 
                 let indexer = Indexer::from_context(ctx.clone());
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
+                // Emit terminal events (job_completed, error) directly,
+                // bypassing backpressure — consumer MUST see them.
                 match result {
                     Ok(result) => {
                         let ev_done = Event {
@@ -207,14 +209,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 json!({"processed": result.chunks.len(), "duration_ms": 0}),
                             ),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            monitor.check_and_maybe_resume();
-                            let _ =
-                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            ctx.backpressure_monitors.remove(&job_id);
-                        } else {
-                            jsonl::write_event(&ev_done);
-                        }
+                        jsonl::write_event(&ev_done);
                     }
                     Err(err) => {
                         let ev_error = Event {
@@ -228,13 +223,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "recoverable": false
                             })),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            let _ = crate::infra::jsonl::emit_event_with_backpressure(
-                                monitor, ev_error,
-                            );
-                        } else {
-                            jsonl::write_event(&ev_error);
-                        }
+                        jsonl::write_event(&ev_error);
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -242,16 +231,14 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            monitor.check_and_maybe_resume();
-                            let _ =
-                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            ctx.backpressure_monitors.remove(&job_id);
-                        } else {
-                            jsonl::write_event(&ev_done);
-                        }
+                        jsonl::write_event(&ev_done);
                     }
                 }
+
+                // Monitor stays alive in DashMap for ack handler.
+                // The spawned thread drops its Arc, but the DashMap
+                // entry is cleaned up when the process exits (stdin
+                // closed by consumer) or by an explicit cleanup command.
             });
         }
         "dry_run" | "list_files" => {
@@ -503,6 +490,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
 
                 let indexer = Indexer::from_context(ctx.clone());
                 let result = indexer.index_path_parallel(&path, opts, Some(job_id.clone()));
+                // Terminal events bypass backpressure — consumer MUST see them.
                 match result {
                     Ok(result) => {
                         let ev_done = Event {
@@ -514,14 +502,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 json!({"processed": result.chunks.len(), "duration_ms": 0}),
                             ),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            monitor.check_and_maybe_resume();
-                            let _ =
-                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            ctx.backpressure_monitors.remove(&job_id);
-                        } else {
-                            jsonl::write_event(&ev_done);
-                        }
+                        jsonl::write_event(&ev_done);
                     }
                     Err(err) => {
                         let ev_error = Event {
@@ -535,13 +516,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "recoverable": false
                             })),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            let _ = crate::infra::jsonl::emit_event_with_backpressure(
-                                monitor, ev_error,
-                            );
-                        } else {
-                            jsonl::write_event(&ev_error);
-                        }
+                        jsonl::write_event(&ev_error);
                         let ev_done = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
@@ -549,16 +524,11 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({"processed": 0, "duration_ms": 0, "errors": 1})),
                         };
-                        if let Some(ref monitor) = bp_monitor {
-                            monitor.check_and_maybe_resume();
-                            let _ =
-                                crate::infra::jsonl::emit_event_with_backpressure(monitor, ev_done);
-                            ctx.backpressure_monitors.remove(&job_id);
-                        } else {
-                            jsonl::write_event(&ev_done);
-                        }
+                        jsonl::write_event(&ev_done);
                     }
                 }
+
+                // Monitor stays alive in DashMap for ack handler.
             });
         }
         "resume" => {

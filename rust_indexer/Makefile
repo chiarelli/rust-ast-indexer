@@ -1,10 +1,11 @@
-.PHONY: help test unit integration bench bench-verbose bench-serial-parallel bench-throughput bench-scale smoke clean docs check format
+.PHONY: help build test unit integration bench bench-verbose bench-serial-parallel bench-throughput bench-scale smoke clean docs check format
 
 FEATURES := --features parsing
 
 help:          # Show available commands
 	@echo "Rust Indexer - Make targets"
 	@echo "========================="
+	@echo "  make build                   Build release binary (target/release/rust_indexer)"
 	@echo "  make test                    Run all tests (unit + integration)"
 	@echo "  make unit                    Run only unit tests (library)"
 	@echo "  make integration             Run only integration tests"
@@ -18,6 +19,9 @@ help:          # Show available commands
 	@echo "  make check                   Check compilation"
 	@echo "  make format                  Format code"
 	@echo "  make lint                    Run clippy"
+
+build:         # Build release binary (target/release/rust_indexer)
+	cargo build --release
 
 test:          # Run all tests (unit + integration)
 	cargo test $(FEATURES)

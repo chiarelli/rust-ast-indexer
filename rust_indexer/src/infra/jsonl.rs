@@ -123,6 +123,10 @@ pub fn write_resume_event_with_payload(job_id: Option<String>, payload: serde_js
 }
 
 /// Emite um evento com controle de backpressure.
+///
+/// Se o monitor estiver paused (fila cheia), a thread BLOQUEIA
+/// via Condvar até que o consumidor envie ACK suficiente para
+/// trazer a fila abaixo do limiar de resume.
 pub fn emit_with_backpressure<F>(
     monitor: &crate::infra::backpressure::BackpressureMonitor,
     event_builder: F,
@@ -132,21 +136,16 @@ where
 {
     // Always increment queue first
     monitor.increment_queue_size();
-    let current_size = monitor.current_queue_size();
 
-    // If paused, check for resume first
+    // Se paused, bloqueia até que o consumidor ACKe chunks
+    // (Condvar notify via check_and_maybe_resume / check_timeout).
     if monitor.is_paused() {
-        monitor.check_and_maybe_resume();
-        if monitor.is_paused() {
-            return Ok(()); // Still paused, skip emission
-        }
-        // Resumed, proceed to emit
+        monitor.wait_until_resumed();
     } else {
-        // Not paused: check if we should pause BEFORE current event
+        let current_size = monitor.current_queue_size();
         if current_size >= monitor.config().max_queue_size {
             monitor.check_and_maybe_pause();
-            // After triggering pause, we're now paused - skip this event
-            return Ok(());
+            monitor.wait_until_resumed();
         }
     }
 
@@ -290,10 +289,8 @@ pub fn emit_event_with_backpressure(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::infra::backpressure::{
-        BackpressureConfig, BackpressureConfigError, BackpressureMonitor, PauseReason,
-        PauseResumePayload, PauseResumeReason, ResumeReason,
-    };
+    use crate::infra::backpressure::{BackpressureConfig, BackpressureMonitor};
+    use std::sync::Arc;
 
     #[test]
     fn build_pause_event_contains_metadata() {
@@ -365,36 +362,51 @@ mod tests {
     }
 
     #[test]
-    fn test_emit_with_backpressure_when_paused_and_queue_above_threshold() {
+    fn test_emit_with_backpressure_blocks_when_paused_and_resumes_on_force() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
-        let monitor = BackpressureMonitor::new(config, 100, Some("test-job".to_string())).unwrap();
+        let monitor = Arc::new(
+            BackpressureMonitor::new(config, 100, Some("test-job".to_string())).unwrap(),
+        );
 
-        // Simulate pause
+        // Pre-pause via check_and_maybe_pause (counter=100 >= 100)
         monitor.check_and_maybe_pause();
         assert!(monitor.is_paused());
 
-        let mut event_emitted = false;
-        let result = emit_with_backpressure(&monitor, || {
-            event_emitted = true;
-            build_chunk_event(
-                None,
-                &ChunkEventPayload {
-                    chunk_id: "test-chunk".into(),
-                    chunk_kind: crate::application::protocol::ChunkKind::FullFile,
-                    file: "test.rs".into(),
-                    language: Some("rust".into()),
-                    symbol_id: None,
-                    start_line: 1,
-                    end_line: 10,
-                    text: "test".into(),
-                    chunk_md5: "md5".into(),
-                    size: 4,
-                },
-            )
+        let mon_clone = Arc::clone(&monitor);
+        let handle = std::thread::spawn(move || {
+            let mut emitted = false;
+            let _ = emit_with_backpressure(&*mon_clone, || {
+                emitted = true;
+                build_chunk_event(
+                    None,
+                    &ChunkEventPayload {
+                        chunk_id: "test-chunk".into(),
+                        chunk_kind: crate::application::protocol::ChunkKind::FullFile,
+                        file: "test.rs".into(),
+                        language: Some("rust".into()),
+                        symbol_id: None,
+                        start_line: 1,
+                        end_line: 10,
+                        text: "test".into(),
+                        chunk_md5: "md5".into(),
+                        size: 4,
+                    },
+                )
+            });
+            emitted
         });
 
-        assert!(result.is_ok());
-        assert!(!event_emitted); // Should NOT emit when paused
+        // Give the thread time to block on the Condvar
+        std::thread::sleep(std::time::Duration::from_millis(100));
+        assert!(monitor.is_paused());
+
+        // Force resume — should unblock the thread
+        monitor.force_resume();
+        assert!(!monitor.is_paused());
+
+        // The thread should now complete and have emitted the event
+        let emitted = handle.join().unwrap();
+        assert!(emitted, "blocked thread should emit after resume");
     }
 
     #[test]

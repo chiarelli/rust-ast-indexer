@@ -8,6 +8,15 @@ use serde::{Deserialize, Serialize};
 mod monitor;
 pub use monitor::BackpressureMonitor;
 
+/// Tamanho mínimo absoluto para `max_queue_size`.
+///
+/// Valores abaixo deste limite não fazem sentido porque:
+/// - O pipe buffer do SO (~64KB) já consegue armazenar ~10-20 eventos de chunk
+/// - Se `max_queue_size` for menor que a capacidade do pipe, o BackpressureMonitor
+///   nunca observa a fila chegar ao limite — o pipe bloqueia primeiro, e o pause
+///   nunca é emitido, tornando o sistema de backpressure ineficaz.
+pub const MIN_BACKPRESSURE_QUEUE_SIZE: usize = 10;
+
 /// Erros que podem ocorrer durante configuração de backpressure.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackpressureConfigError {
@@ -152,10 +161,18 @@ impl Default for BackpressureConfig {
 
 impl BackpressureConfig {
     /// Cria uma nova `BackpressureConfig` com o tamanho máximo de fila dado.
+    ///
+    /// # Panics
+    ///
+    /// Panicará em `debug_builds` se `size < MIN_BACKPRESSURE_QUEUE_SIZE`.
     pub fn with_max_queue_size(size: usize) -> Result<Self, BackpressureConfigError> {
-        if size == 0 {
+        if size < MIN_BACKPRESSURE_QUEUE_SIZE {
             return Err(BackpressureConfigError::InvalidQueueSize(
-                "tamanho de fila deve ser maior que zero".to_string(),
+                format!(
+                    "max_queue_size={size} está abaixo do mínimo de \
+                     {MIN_BACKPRESSURE_QUEUE_SIZE}. Um valor maior evita que o \
+                     buffer do pipe (~64KB) domine o controle de backpressure.",
+                ),
             ));
         }
         Ok(Self {
@@ -165,10 +182,18 @@ impl BackpressureConfig {
     }
 
     /// Valida todos os campos da configuração.
+    ///
+    /// # Erros
+    ///
+    /// Retorna `InvalidQueueSize` se `max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE`.
+    /// Retorna `InvalidThreshold` se `threshold_percent` estiver fora de [80, 99].
     pub fn validate(&self) -> Result<(), BackpressureConfigError> {
-        if self.max_queue_size == 0 {
+        if self.max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE {
             return Err(BackpressureConfigError::InvalidQueueSize(
-                "max_queue_size deve ser positivo".to_string(),
+                format!(
+                    "max_queue_size={} é menor que o mínimo de {}.",
+                    self.max_queue_size, MIN_BACKPRESSURE_QUEUE_SIZE,
+                ),
             ));
         }
 
@@ -235,6 +260,51 @@ mod tests {
             result.unwrap_err(),
             BackpressureConfigError::InvalidQueueSize(_)
         ));
+    }
+
+    #[test]
+    fn max_queue_size_below_minimum_rejected() {
+        let result = BackpressureConfig::with_max_queue_size(MIN_BACKPRESSURE_QUEUE_SIZE - 1);
+        assert!(result.is_err(), "should reject max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE");
+        assert!(matches!(
+            result.unwrap_err(),
+            BackpressureConfigError::InvalidQueueSize(_)
+        ));
+    }
+
+    #[test]
+    fn max_queue_size_below_minimum_rejected_validate() {
+        let config = BackpressureConfig {
+            max_queue_size: MIN_BACKPRESSURE_QUEUE_SIZE - 1,
+            threshold_percent: 80,
+            ack_required: false,
+            pause_timeout_secs: 300,
+        };
+        assert!(matches!(
+            config.validate(),
+            Err(BackpressureConfigError::InvalidQueueSize(_))
+        ));
+    }
+
+    #[test]
+    fn max_queue_size_at_minimum_accepted() {
+        let config = BackpressureConfig::with_max_queue_size(MIN_BACKPRESSURE_QUEUE_SIZE).unwrap();
+        assert_eq!(config.max_queue_size, MIN_BACKPRESSURE_QUEUE_SIZE);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn max_queue_size_above_minimum_accepted() {
+        let config = BackpressureConfig::with_max_queue_size(50).unwrap();
+        assert_eq!(config.max_queue_size, 50);
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn max_queue_size_500_still_accepted() {
+        let config = BackpressureConfig::with_max_queue_size(500).unwrap();
+        assert_eq!(config.max_queue_size, 500);
+        assert!(config.validate().is_ok());
     }
 
     #[test]
