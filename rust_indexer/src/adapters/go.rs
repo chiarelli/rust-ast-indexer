@@ -283,8 +283,9 @@ mod go_adapter {
             let (_, source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
                 language: "go".to_string(),
-                source_len: source_str.len(),
-                source: source_str,
+                source_len: source.len(),
+                source: source.to_string(),
+                path: String::new(),
             })
         }
 

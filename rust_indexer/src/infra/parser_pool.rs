@@ -52,6 +52,7 @@ mod tests {
                 language: "mock".to_string(),
                 source_len: source.len(),
                 source: source.to_string(),
+                path: String::new(),
             })
         }
         fn extract_symbols(&self, _parsed: &ParsedFile) -> Result<Vec<Symbol>> {

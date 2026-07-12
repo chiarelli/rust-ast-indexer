@@ -184,7 +184,8 @@ impl Indexer {
 
                 let (parsed_text, symbols) = match &adapter_opt {
                     Some(adapter) => match adapter.parse_source(&text) {
-                        Ok(parsed) => {
+                        Ok(mut parsed) => {
+                            parsed.path = file.path.clone();
                             let symbols = adapter.extract_symbols(&parsed).ok();
 
                             if opts.extract_imports {

@@ -271,9 +271,10 @@ mod tests {
         impl LanguageAdapter for StubAdapter {
             fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
                 Ok(ParsedFile {
-                    language: "stub".to_string(),
-                    source_len: 0,
-                    source: String::new(),
+                    language: "rust".to_string(),
+                    source_len: source.len(),
+                    source: source.to_string(),
+                    path: String::new(),
                 })
             }
             fn extract_symbols(
