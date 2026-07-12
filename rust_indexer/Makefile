@@ -21,7 +21,7 @@ help:          # Show available commands
 	@echo "  make lint                    Run clippy"
 
 build:         # Build release binary (target/release/rust_indexer)
-	cargo build --release
+	cargo build --release $(FEATURES)
 
 test:          # Run all tests (unit + integration)
 	cargo test $(FEATURES)

@@ -193,18 +193,10 @@ impl Indexer {
                                     for raw_edge in imports {
                                         let normalized =
                                             normalize_import(&raw_edge, &lang_for_norm);
-                                         if let Some(ref monitor) = monitor {
-                                            let _ = crate::infra::jsonl::emit_import_with_backpressure(
-                                                monitor,
-                                                job_id.clone(),
-                                                &normalized,
-                                            );
-                                        } else {
-                                            crate::infra::jsonl::write_import_event(
-                                                job_id.clone(),
-                                                &normalized,
-                                            );
-                                        }
+                                        crate::infra::jsonl::write_import_event(
+                                            job_id.clone(),
+                                            &normalized,
+                                        );
                                     }
                                 }
                             }
@@ -212,18 +204,10 @@ impl Indexer {
                             if opts.extract_calls {
                                 if let Ok(calls) = adapter.extract_calls(&parsed) {
                                     for edge in calls {
-                                         if let Some(ref monitor) = monitor {
-                                            let _ = crate::infra::jsonl::emit_call_with_backpressure(
-                                                monitor,
-                                                job_id.clone(),
-                                                &edge,
-                                            );
-                                        } else {
-                                            crate::infra::jsonl::write_call_event(
-                                                job_id.clone(),
-                                                &edge,
-                                            );
-                                        }
+                                        crate::infra::jsonl::write_call_event(
+                                            job_id.clone(),
+                                            &edge,
+                                        );
                                     }
                                 }
                             }
