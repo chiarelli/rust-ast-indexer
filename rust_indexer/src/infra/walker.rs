@@ -182,18 +182,10 @@ where
             }
         }
 
-        // Detect binary/non-utf8 files early
-        match is_likely_text(entry.path()) {
-            Ok(true) => {}
-            Ok(false) => {
-                handler(Err((relative_path, "non_utf8_or_binary".to_string())));
-                continue;
-            }
-            Err(_) => {
-                handler(Err((relative_path, "io_error".to_string())));
-                continue;
-            }
-        }
+        // Skip files without registered parser (unknown extension)
+        let Some(language) = detect_language(entry.path()) else {
+            continue;
+        };
 
         let metadata = match entry.metadata() {
             Ok(value) => value,
@@ -223,30 +215,11 @@ where
             size: metadata.len(),
             mtime,
             hash,
-            language: detect_language(entry.path()),
+            language: Some(language),
         }));
     }
 
     Ok(())
-}
-
-fn is_likely_text(path: &Path) -> io::Result<bool> {
-    use std::fs::File;
-    use std::io::Read;
-
-    let mut file = File::open(path)?;
-    let mut buf = [0u8; 4096];
-    let n = file.read(&mut buf)?;
-    if n == 0 {
-        return Ok(true);
-    }
-    if buf[..n].contains(&0) {
-        return Ok(false);
-    }
-    match std::str::from_utf8(&buf[..n]) {
-        Ok(_) => Ok(true),
-        Err(_) => Ok(false),
-    }
 }
 
 fn load_ignore_patterns(root: &Path) -> Vec<String> {
@@ -299,19 +272,9 @@ fn detect_language(path: &Path) -> Option<String> {
             "rs" => Some("rust"),
             "go" => Some("go"),
             "py" => Some("python"),
-            "ts" => Some("typescript"),
-            "tsx" => Some("typescript"),
-            "js" => Some("javascript"),
+            "ts" | "tsx" => Some("typescript"),
+            "js" | "jsx" => Some("javascript"),
             "java" => Some("java"),
-            "c" => Some("c"),
-            "cpp" => Some("cpp"),
-            "h" => Some("c"),
-            "cs" => Some("csharp"),
-            "swift" => Some("swift"),
-            "kt" => Some("kotlin"),
-            "kts" => Some("kotlin"),
-            "php" => Some("php"),
-            "rb" => Some("ruby"),
             _ => None,
         })
         .map(String::from)
@@ -401,15 +364,15 @@ mod tests {
     #[test]
     fn loads_gitignore_patterns_when_enabled() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(".gitignore"), "secret.txt\n").unwrap();
-        std::fs::write(dir.path().join("secret.txt"), b"topsecret").unwrap();
-        std::fs::write(dir.path().join("visible.txt"), b"ok").unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "secret.rs\n").unwrap();
+        std::fs::write(dir.path().join("secret.rs"), b"pub const SECRET: i32 = 0;").unwrap();
+        std::fs::write(dir.path().join("visible.rs"), b"pub fn visible() {}").unwrap();
 
         let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
         let records = walk_path(&opts).unwrap();
 
         assert_eq!(records.len(), 1);
-        assert_eq!(records[0].path, "visible.txt");
+        assert_eq!(records[0].path, "visible.rs");
     }
 
     #[cfg(unix)]

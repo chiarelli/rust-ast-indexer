@@ -99,12 +99,16 @@ impl Indexer {
         let mut chunks = Vec::new();
 
         for file in &files {
+            let lang = detect_language(&file.path);
+            if lang.is_none() {
+                continue;
+            }
             let full_path = std::path::PathBuf::from(path).join(&file.path);
             let text = std::fs::read_to_string(&full_path).unwrap_or_default();
             let generated = chunk_file_contents(
                 &file.path,
                 &text,
-                file.language.clone(),
+                lang,
                 None,
                 &opts.chunking,
             );
@@ -178,6 +182,9 @@ impl Indexer {
             (tx.clone(), monitor_clone),
             |(sender, monitor), (_idx, file)| {
                 let lang = detect_language(&file.path);
+                if lang.is_none() {
+                    return;
+                }
                 let adapter_opt = lang.as_ref().and_then(|language| pool.get(language));
                 let full_path = base_path.join(&file.path);
                 let text = std::fs::read_to_string(&full_path).unwrap_or_default();
@@ -412,7 +419,7 @@ mod tests {
     }
 
     #[test]
-    fn index_path_parallel_falls_back_to_full_file_for_unknown_languages() {
+    fn index_path_parallel_skips_files_without_registered_parser() {
         let dir = tempdir().unwrap();
         write_file(dir.path(), "notes.txt", "alpha\nbeta\n");
 
@@ -429,12 +436,8 @@ mod tests {
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
             .unwrap();
 
-        assert_eq!(result.files.len(), 1);
-        assert_eq!(result.chunks.len(), 1);
-        let chunk = &result.chunks[0];
-        assert_eq!(chunk.chunk_kind.as_deref(), Some("FullFile"));
-        assert_eq!(chunk.file_path, "notes.txt");
-        assert_eq!(chunk.content, "alpha\nbeta\n");
+        assert_eq!(result.files.len(), 0);
+        assert_eq!(result.chunks.len(), 0);
     }
 
     #[cfg(feature = "parsing")]
