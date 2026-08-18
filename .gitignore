@@ -1,6 +1,8 @@
 AGENTS.md
 # Local configs
 .crush.json
+.crush-backup.json
+.crushignore
 # Node modules
 node_modules/
 # Rust target
@@ -13,3 +15,9 @@ rust_indexer/target/
 .kilo/
 .vscode/
 .devcontainer/kilo
+
+# Local dev environment (not for publication)
+.devcontainer/.env
+.mcp-tools/
+scripts/index_codebase.sh
+rust-indexer.code-workspace
