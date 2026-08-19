@@ -280,7 +280,7 @@ mod go_adapter {
 
     impl LanguageAdapter for GoAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
-            let (_, source_str) = self.parse_tree(source)?;
+            let (_, _source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
                 language: "go".to_string(),
                 source_len: source.len(),

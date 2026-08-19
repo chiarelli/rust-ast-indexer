@@ -73,7 +73,6 @@ fn smoke_backpressure_emits_pause_and_resume_events() {
     let mut saw_pause = false;
     let mut saw_resume = false;
     let mut got_completed = false;
-    let mut ack_sent = false;
     let mut iterations = 0;
 
     while iterations < 3000 {
@@ -103,7 +102,6 @@ fn smoke_backpressure_emits_pause_and_resume_events() {
             });
             writeln!(stdin, "{}", ack_cmd).expect("failed to write ack command");
             stdin.flush().expect("failed to flush stdin");
-            ack_sent = true;
 
             // Wait for ack to be processed and resume to be emitted
             std::thread::sleep(std::time::Duration::from_millis(500));

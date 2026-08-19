@@ -179,7 +179,10 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
         );
         pool.register("java", Arc::new(crate::adapters::java::JavaAdapter::new()));
         pool.register("go", Arc::new(crate::adapters::go::GoAdapter::new()));
-        pool.register("python", Arc::new(crate::adapters::python::PythonAdapter::new()));
+        pool.register(
+            "python",
+            Arc::new(crate::adapters::python::PythonAdapter::new()),
+        );
         pool.register(
             "tsx",
             Arc::new(crate::adapters::typescript::TypeScriptAdapter::new()),
@@ -272,8 +275,8 @@ mod tests {
             fn parse_source(&self, _source: &str) -> Result<ParsedFile> {
                 Ok(ParsedFile {
                     language: "rust".to_string(),
-                    source_len: source.len(),
-                    source: source.to_string(),
+                    source_len: _source.len(),
+                    source: _source.to_string(),
                     path: String::new(),
                 })
             }

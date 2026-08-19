@@ -247,7 +247,7 @@ mod rust_adapter {
 
     impl LanguageAdapter for RustAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
-            let (_, source_str) = self.parse_tree(source)?;
+            let (_, _source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
                 language: "rust".to_string(),
                 source_len: source.len(),

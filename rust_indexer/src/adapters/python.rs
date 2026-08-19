@@ -304,7 +304,7 @@ mod python_adapter {
 
     impl LanguageAdapter for PythonAdapter {
         fn parse_source(&self, source: &str) -> Result<ParsedFile> {
-            let (_, source_str) = self.parse_tree(source)?;
+            let (_, _source_str) = self.parse_tree(source)?;
             Ok(ParsedFile {
                 language: "python".to_string(),
                 source_len: source.len(),

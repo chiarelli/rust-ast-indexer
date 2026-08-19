@@ -285,7 +285,6 @@ pub fn emit_event_with_backpressure(
 }
 
 /// Emite qualquer evento genérico passando pelo controle de backpressure.
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -375,7 +374,7 @@ mod tests {
         let mon_clone = Arc::clone(&monitor);
         let handle = std::thread::spawn(move || {
             let mut emitted = false;
-            let _ = emit_with_backpressure(&*mon_clone, || {
+            let _ = emit_with_backpressure(&mon_clone, || {
                 emitted = true;
                 build_chunk_event(
                     None,

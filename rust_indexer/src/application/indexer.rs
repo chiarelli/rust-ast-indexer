@@ -167,7 +167,7 @@ impl Indexer {
             });
 
         // Store monitor in global map if we have context and job_id
-        if let (Some(ctx), Some(ref jid), Some(ref monitor)) =
+        if let (Some(ctx), Some(jid), Some(monitor)) =
             (&self.ctx, job_id.as_ref(), bp_monitor.as_ref())
         {
             ctx.backpressure_monitors
