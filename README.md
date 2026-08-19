@@ -88,6 +88,35 @@ rust_indexer --mcp
 
 See [doc/protocol.md](rust_indexer/doc/protocol.md) for the full protocol specification (commands, events, backpressure).
 
+## Backpressure
+
+The indexer applies backpressure to the output queue so a slow consumer never
+gets overwhelmed. When the queue reaches `max_queue_size`, the engine emits a
+`pause` event and blocks production; the caller must drain the queue by sending
+`ack` commands, after which a `resume` event is emitted.
+
+> **Important:** `max_queue_size` has a minimum of `10`. Values below that are
+> rejected with a clear `BACKPRESSURE_CONFIG` error. Also, a caller that only
+> reads output **without** sending `ack` will leave the job stuck in `pause`.
+
+See [Backpressure pitfalls & best practices](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste) for the full details.
+
+## Known issues & gotchas
+
+Some non-obvious behaviors were discovered while testing the indexer end to end.
+Before integrating a caller, review the documented pitfalls:
+
+- **Backpressure is a two-way protocol** — the producer pauses, the consumer
+  must acknowledge (`ack`) to resume. See the [backpressure section](#backpressure).
+- **`max_queue_size` minimum is 10** — smaller values are rejected with a clear
+  `BACKPRESSURE_CONFIG` error instead of silently failing.
+- **`file_listed` events bypass backpressure** — only chunks (and imports/calls
+  when enabled) go through the backpressure control.
+
+See [doc/protocol.md](rust_indexer/doc/protocol.md) for the complete protocol
+specification and the [pitfalls section](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste)
+for the detailed write-up of each issue.
+
 ## Make Targets
 
 | Command                    | Description                                     |

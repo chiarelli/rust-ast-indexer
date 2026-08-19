@@ -88,6 +88,35 @@ rust_indexer --mcp
 
 Veja [doc/protocol.md](rust_indexer/doc/protocol.md) para a especificação completa do protocolo (comandos, eventos, backpressure).
 
+## Backpressure
+
+O indexer aplica backpressure à fila de saída para que um consumidor lento nunca
+seja sobrecarregado. Quando a fila atinge `max_queue_size`, a engine emite um
+evento `pause` e bloqueia a produção; o caller deve drenar a fila enviando
+comandos `ack`, após o que um evento `resume` é emitido.
+
+> **Importante:** `max_queue_size` tem mínimo de `10`. Valores abaixo disso são
+> rejeitados com um erro claro `BACKPRESSURE_CONFIG`. Além disso, um caller que
+> apenas lê a saída **sem** enviar `ack` deixará o job preso em `pause`.
+
+Veja [Armadilhas e boas práticas de backpressure](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste) para os detalhes completos.
+
+## Problemas conhecidos e armadilhas
+
+Alguns comportamentos não óbvios foram descobertos ao testar o indexer de ponta
+a ponta. Antes de integrar um caller, revise as armadilhas documentadas:
+
+- **Backpressure é um protocolo de mão dupla** — o produtor pausa, o consumidor
+  deve confirmar (`ack`) para retomar. Veja a [seção de backpressure](#backpressure).
+- **O mínimo de `max_queue_size` é 10** — valores menores são rejeitados com um
+  erro claro `BACKPRESSURE_CONFIG` em vez de falhar silenciosamente.
+- **Eventos `file_listed` ignoram o backpressure** — apenas chunks (e imports/calls
+  quando habilitados) passam pelo controle de backpressure.
+
+Veja [doc/protocol.md](rust_indexer/doc/protocol.md) para a especificação completa
+do protocolo e a [seção de armadilhas](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste)
+para o detalhamento de cada problema.
+
 ## Comandos do Make
 
 | Comando                    | Descrição                                     |
