@@ -569,26 +569,36 @@ mod tests {
         let serial_elapsed = serial_start.elapsed();
 
         // Parallel execution
+        // Use a dedicated Rayon thread pool so the measurement is isolated from
+        // CPU contention caused by other tests running concurrently in the same
+        // process (e.g. integration tests that also use Rayon). Without this, the
+        // parallel branch can be unfairly slower when the full suite runs.
+        let parallel_pool = rayon::ThreadPoolBuilder::new()
+            .num_threads(num_cpus::get().max(2))
+            .build()
+            .expect("build parallel benchmark pool");
         let parallel_start = Instant::now();
-        let parallel_symbols: usize = entries
-            .par_iter()
-            .filter_map(|entry| {
-                let path = entry.path();
-                let ext = path.extension().and_then(|e| e.to_str())?;
-                let lang = match ext {
-                    "rs" => "rust",
-                    "ts" | "js" => "typescript",
-                    "java" => "java",
-                    _ => return None,
-                };
+        let parallel_symbols: usize = parallel_pool.install(|| {
+            entries
+                .par_iter()
+                .filter_map(|entry| {
+                    let path = entry.path();
+                    let ext = path.extension().and_then(|e| e.to_str())?;
+                    let lang = match ext {
+                        "rs" => "rust",
+                        "ts" | "js" => "typescript",
+                        "java" => "java",
+                        _ => return None,
+                    };
 
-                let source = std::fs::read_to_string(path).ok()?;
-                let pool = Arc::new(make_pool());
-                let adapter = pool.get(lang)?;
-                let parsed = adapter.parse_source(&source).ok()?;
-                Some(adapter.extract_symbols(&parsed).ok()?.len())
-            })
-            .sum();
+                    let source = std::fs::read_to_string(path).ok()?;
+                    let pool = Arc::new(make_pool());
+                    let adapter = pool.get(lang)?;
+                    let parsed = adapter.parse_source(&source).ok()?;
+                    Some(adapter.extract_symbols(&parsed).ok()?.len())
+                })
+                .sum()
+        });
         let parallel_elapsed = parallel_start.elapsed();
 
         eprintln!(

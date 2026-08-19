@@ -14,13 +14,13 @@ fn binary_indexes_files_from_git_tracked_and_diff() {
     std::process::Command::new("git").arg("-C").arg(root).args(["config","user.name","Tester"]).output().unwrap();
 
     // add initial file and commit
-    std::fs::write(root.join("a.txt"), b"hello").unwrap();
+    std::fs::write(root.join("main.rs"), b"fn main() {}").unwrap();
     std::process::Command::new("git").arg("-C").arg(root).arg("add").arg(".").output().unwrap();
     std::process::Command::new("git").arg("-C").arg(root).arg("commit").arg("-m").arg("init").output().unwrap();
     std::process::Command::new("git").arg("-C").arg(root).arg("tag").arg("v1").output().unwrap();
 
     // modify file and commit second
-    std::fs::write(root.join("a.txt"), b"hello world").unwrap();
+    std::fs::write(root.join("main.rs"), b"fn main() { println!(\"hello\"); }").unwrap();
     std::process::Command::new("git").arg("-C").arg(root).arg("add").arg(".").output().unwrap();
     std::process::Command::new("git").arg("-C").arg(root).arg("commit").arg("-m").arg("second").output().unwrap();
 

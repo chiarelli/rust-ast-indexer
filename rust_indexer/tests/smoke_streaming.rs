@@ -46,7 +46,7 @@ fn smoke_index_path_streams_file_listed_events() {
     // create small tempdir with two files
     let td = tempdir().unwrap();
     std::fs::write(td.path().join("a.rs"), b"fn a() {}\n").unwrap();
-    std::fs::write(td.path().join("b.txt"), b"hello\n").unwrap();
+    std::fs::write(td.path().join("b.rs"), b"fn b() {}\n").unwrap();
 
     let cmd = json!({
         "protocol_version": "1.0.0",

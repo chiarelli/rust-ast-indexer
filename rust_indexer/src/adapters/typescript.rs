@@ -216,7 +216,7 @@ mod typescript_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
-            Self::collect_imports(&mut cursor, &parsed.source, &parsed.path, &mut edges);
+            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
             Ok(edges)
         }
 
@@ -328,7 +328,7 @@ mod typescript_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
-            Self::collect_calls(&mut cursor, &parsed.source, &parsed.path, &mut edges);
+            Self::collect_calls(&mut cursor, &parsed.source, "<source>", &mut edges);
             Ok(edges)
         }
     }
