@@ -10,7 +10,7 @@ use walkdir::WalkDir;
 
 use crate::application::protocol::Event;
 use crate::domain::types::FileRecord;
-use crate::infra::backpressure::BackpressureMonitor;
+use crate::infra::backpressure::{BackpressureConfigError, BackpressureMonitor};
 use crate::infra::jsonl;
 use serde_json::json;
 
@@ -58,11 +58,19 @@ impl ScanOptions {
 #[derive(Debug)]
 pub enum WalkerError {
     Glob(globset::Error),
+    /// Configuração de backpressure inválida (ex.: `max_queue_size` abaixo do mínimo).
+    BackpressureConfig(BackpressureConfigError),
 }
 
 impl From<globset::Error> for WalkerError {
     fn from(value: globset::Error) -> Self {
         WalkerError::Glob(value)
+    }
+}
+
+impl From<BackpressureConfigError> for WalkerError {
+    fn from(value: BackpressureConfigError) -> Self {
+        WalkerError::BackpressureConfig(value)
     }
 }
 

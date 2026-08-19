@@ -152,19 +152,12 @@ impl Indexer {
             Arc::new(ParserPool::new())
         };
 
-        let bp_monitor: Option<Arc<BackpressureMonitor>> = opts
-            .backpressure
-            .as_ref()
-            .map(|config| {
-                Arc::new(
-                    BackpressureMonitor::new(config.clone(), 0, job_id.clone())
-                        .expect(
-                            "BackpressureConfig inválida: max_queue_size mínimo é \
-                             MIN_BACKPRESSURE_QUEUE_SIZE=10. Verifique a configuração \
-                             do indexer no payload do comando.",
-                        ),
-                )
-            });
+        let bp_monitor: Option<Arc<BackpressureMonitor>> = match &opts.backpressure {
+            Some(config) => Some(Arc::new(
+                BackpressureMonitor::new(config.clone(), 0, job_id.clone())?,
+            )),
+            None => None,
+        };
 
         // Store monitor in global map if we have context and job_id
         if let (Some(ctx), Some(jid), Some(monitor)) =

@@ -486,3 +486,72 @@ ou via `incremental_index` com opção equivalente.
 └─────────────────────┴────────────────────────────┘
 ```
 
+## Armadilhas e boas práticas (achados de teste)
+
+Esta seção documenta comportamentos não óbvios descobertos ao exercitar o
+backpressure de ponta a ponta. Leia antes de integrar um caller.
+
+### 1. `max_queue_size` tem mínimo de 10
+
+`max_queue_size` **não aceita valores abaixo de 10** (`MIN_BACKPRESSURE_QUEUE_SIZE`).
+Valores menores que o buffer do pipe do SO (~64KB) fazem o `BackpressureMonitor`
+nunca observar a fila chegar ao limite — o pipe bloqueia primeiro e o `pause`
+nunca é emitido, tornando o backpressure ineficaz.
+
+Se você enviar um valor inválido (ex.: `max_queue_size: 5`), o indexer responde
+com um evento `error` claro e **não trava**:
+
+```json
+{"protocol_version":"1.0.0","type":"event","event":"error","job_id":"job-x","payload":{"code":"BACKPRESSURE_CONFIG","message":"invalid backpressure config: tamanho de fila inválido: max_queue_size=5 é menor que o mínimo de 10.","recoverable":false}}
+{"protocol_version":"1.0.0","type":"event","event":"job_completed","job_id":"job-x","payload":{"duration_ms":0,"errors":1,"processed":0}}
+```
+
+> **Histórico:** antes da correção, uma config inválida causava um `panic`
+> silencioso dentro de uma thread do Rayon, que travava o processo sem emitir
+> nenhum evento de erro. Agora o erro é propagado e reportado como
+> `BACKPRESSURE_CONFIG`.
+
+### 2. O caller DEVE drenar a fila com `ack`
+
+O `pause` bloqueia a produção de novos eventos até que a fila caia abaixo do
+threshold. Com `ack_required: false` (padrão), o resume é automático **somente
+quando a fila é drenada** — e a fila só é drenada se o caller enviar comandos
+`ack` com `count`.
+
+**Fluxo correto do caller:**
+
+1. Recebe evento `pause` (fila atingiu `max_queue_size`)
+2. Envia comando `ack` com `count` para decrementar a fila
+3. Recebe evento `resume` quando a fila cai abaixo do threshold
+4. Continua lendo eventos até `job_completed`
+
+```json
+{"protocol_version":"1.0.0","type":"command","command":"ack","seq":2,"job_id":"job-x","payload":{"count":10}}
+```
+
+> **Atenção:** um caller que apenas lê a saída **sem** enviar `ack` fará o job
+> ficar preso em `pause` para sempre (até o `pause_timeout_secs`). O backpressure
+> é um protocolo de mão dupla: o produtor pausa, o consumidor confirma.
+
+### 3. `file_listed` não passa pelo backpressure
+
+Os eventos `file_listed` são emitidos durante o walk, **antes** do pipeline de
+chunks, e **não** passam pelo controle de backpressure. Apenas `chunk_emitted`
+(e imports/calls quando configurados) passam por `emit_with_backpressure`. Por
+isso, com muitos arquivos você pode ver todos os `file_listed` antes de qualquer
+`pause`.
+
+### 4. Eventos terminais sempre chegam
+
+`job_completed` e `error` são emitidos **diretamente**, ignorando o backpressure,
+para que o caller sempre receba o fim do job — mesmo que a fila esteja cheia.
+
+### 5. Observabilidade
+
+- Um `resume` sem `pause` anterior pode indicar perda de eventos ou config
+  excessivamente conservadora.
+- `threshold_percent` muito baixo (80-85%) causa oscilações (flapping); muito
+  alto (95-99%) mantém a fila constantemente cheia.
+- Correlacione `pause`/`resume` com timestamps para análise de performance.
+
+

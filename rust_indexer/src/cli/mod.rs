@@ -212,14 +212,24 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         jsonl::write_event(&ev_done);
                     }
                     Err(err) => {
+                        let (code, message) = match &err {
+                            crate::infra::walker::WalkerError::BackpressureConfig(e) => (
+                                "BACKPRESSURE_CONFIG",
+                                format!("invalid backpressure config: {}", e),
+                            ),
+                            _ => (
+                                "WALKER_ERROR",
+                                format!("walker failed: {:?}", err),
+                            ),
+                        };
                         let ev_error = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
                             event: "error".into(),
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({
-                                "code": "WALKER_ERROR",
-                                "message": format!("walker failed: {:?}", err),
+                                "code": code,
+                                "message": message,
                                 "recoverable": false
                             })),
                         };
@@ -505,14 +515,24 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         jsonl::write_event(&ev_done);
                     }
                     Err(err) => {
+                        let (code, message) = match &err {
+                            crate::infra::walker::WalkerError::BackpressureConfig(e) => (
+                                "BACKPRESSURE_CONFIG",
+                                format!("invalid backpressure config: {}", e),
+                            ),
+                            _ => (
+                                "WALKER_ERROR",
+                                format!("walker failed: {:?}", err),
+                            ),
+                        };
                         let ev_error = Event {
                             protocol_version: "1.0.0".into(),
                             r#type: "event".into(),
                             event: "error".into(),
                             job_id: Some(job_id.clone()),
                             payload: Some(json!({
-                                "code": "WALKER_ERROR",
-                                "message": format!("walker failed: {:?}", err),
+                                "code": code,
+                                "message": message,
                                 "recoverable": false
                             })),
                         };
