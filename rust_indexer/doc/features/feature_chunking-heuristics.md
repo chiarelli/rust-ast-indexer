@@ -122,6 +122,11 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
 
 ### Modelo de Chunk (schema proposto)
 
+> **Nota (2026-10-09):** este é o **modelo interno** `Chunk` proposto na spec de
+> design. O evento `chunk_emitted` **não** emite `symbol_ids`/`content`/
+> `strategy`/`metadata` — o payload público está em `doc/protocol.md`. Em
+> especial, `token_count` (dentro de `metadata`) é interno e não é emitido.
+
 ```json
 {
   "type": "chunk_emitted",

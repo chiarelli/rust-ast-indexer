@@ -166,7 +166,12 @@ The indexer splits source files into semantically coherent chunks for consumptio
 > (`"src/services/user.rs:add"`), usado como chave de lookup no índice de símbolos.
 > Ver `doc/protocol.md` § `chunk_emitted`.
 
-### Chunk Fields
+### Chunk Fields (modelo INTERNO `Chunk` — NÃO é o payload)
+
+> **Atenção:** esta tabela descreve o modelo INTERNO `Chunk`. O evento
+> `chunk_emitted` emite apenas `chunk_id`, `chunk_kind`, `file`, `language`,
+> `symbol_id`, `start_line`, `end_line`, `text`, `chunk_md5`, `size`. O
+> contrato canônico do evento é `doc/protocol.md` § `chunk_emitted`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -181,14 +186,29 @@ The indexer splits source files into semantically coherent chunks for consumptio
 | `strategy` | string | Chunking strategy used |
 | `metadata` | object | Extended metadata (see below) |
 
-### Metadata Fields
+### Metadata Fields (interno `Chunk.metadata` — NÃO emitido)
+
+> `Chunk.metadata` é interno e **nunca é serializado no protocolo** (verificado:
+> as chaves do payload não o incluem). Em especial `token_count` **não chega ao
+> consumidor**.
+>
+> **Decisão (2026-10-09): não expor.** Duas razões medidas:
+> 1. **Não-determinismo:** `maybe_token_count` devolve `None` — e o campo é
+>    omitido — quando o tokenizer não carrega (sem rede/cache na 1ª execução).
+>    Um campo que é número num host e ausente/null noutro é pior contrato do
+>    que campo ausente.
+> 2. **Sem consumidor:** nenhum consumidor conhecido lê `token_count`.
+>
+> Expor exigiria decidir o contrato de `metadata` no payload público (mudança
+> de contrato, não um fix pontual). Se for feito, o campo deve ser
+> `Option<usize>` explícito e a doc precisa dizer quando é `null`.
 
 | Field | Type | Description |
 |-------|------|-------------|
 | `has_imports_prefix` | boolean | Whether imports were injected as prefix |
 | `scope_chain` | array[string] | Parent scopes (modules, classes) |
 | `line_count` | number | Total lines in chunk |
-| `token_count` | number | Approximate token count (if token_counting enabled) |
+| `token_count` | number | Approximate token count (internal only; NOT emitted — see note above) |
 | `split_from_symbol` | string | Which symbol triggered a split |
 | `previous_chunk_id` | string | ID of previous overlapping chunk |
 | `next_chunk_id` | string | ID of next overlapping chunk |
@@ -250,7 +270,7 @@ The chunking pipeline applies decorators in order:
 1. **Base Strategy** (`SymbolBoundary`, `Semantic`, or `LineLimited`)
 2. **Overlap Decorator** (if `overlap_lines > 0`) - adds `previous_chunk_id`/`next_chunk_id`
 3. **Context Injection Decorator** (if `include_context: true`) - adds imports and scope chain as prefix
-4. **Token Counting** (if `token_counting: true` and feature enabled) - adds `token_count` to metadata
+4. **Token Counting** (if `token_counting: true` and feature enabled) - adds `token_count` to the **internal** `Chunk.metadata` (not emitted in the `chunk_emitted` payload)
 
 ## Integration with CLI
 

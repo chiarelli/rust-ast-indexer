@@ -88,7 +88,7 @@ Behavior:
 - preserves oversized symbols in their own chunk
 - falls back to a full-file chunk when no symbols are available
 - stores `max_line_limit` in metadata
-- optionally adds `token_count` metadata when the `token_counting` feature is enabled
+- optionally adds `token_count` metadata when the `token_counting` feature is enabled (internal `Chunk.metadata` only — **not** part of the `chunk_emitted` payload; see `doc/indexer_spec.md` § Metadata Fields)
 
 Best suited for balancing semantic grouping with deterministic size limits.
 

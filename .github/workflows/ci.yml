@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main, feature/** ]
+    branches: [ main, master, feature/** ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, master ]
 
 jobs:
   build:
@@ -51,21 +51,25 @@ jobs:
         run: rustup component add clippy
 
       - name: Check format
+        working-directory: rust_indexer
         run: cargo fmt --all -- --check
 
       - name: Run clippy (deny warnings)
+        working-directory: rust_indexer
         run: cargo clippy --all-targets --all-features -- -D warnings
 
       - name: Run unit tests
+        working-directory: rust_indexer
         run: cargo test --workspace --all-features --locked --verbose
 
       - name: Build binary for smoke tests
+        working-directory: rust_indexer
         run: cargo build --bins --release
 
       - name: Run smoke tests (incremental_index)
+        working-directory: rust_indexer
         run: |
           git --version
-          cd rust_indexer
           cargo test --test smoke_incremental_git -- --nocapture
 
       - name: Verify commit messages
