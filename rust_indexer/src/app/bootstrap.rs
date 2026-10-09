@@ -1,4 +1,5 @@
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
+use std::thread::JoinHandle;
 
 use crate::infra::{backpressure::BackpressureMonitor, parser_pool::ParserPool};
 use dashmap::DashMap;
@@ -149,6 +150,14 @@ pub struct ApplicationContext {
     pub metrics: Option<Arc<Metrics>>,
     pub logger: Option<Arc<Logger>>,
     pub backpressure_monitors: DashMap<String, Arc<BackpressureMonitor>>,
+    /// Handles das threads de job em background (`index_path`, `incremental_index`).
+    ///
+    /// O CLI é *streaming*: o job roda numa thread própria para o loop de stdin
+    /// seguir aceitando `pause`/`resume`/`ack` enquanto a indexação acontece.
+    /// No EOF do stdin, `run_cli` faz **join** destes handles — sem isso o
+    /// processo morre no meio da indexação e a saída sai truncada, sem
+    /// `job_completed` (bug pré-existente ao `to_file`).
+    pub active_jobs: Mutex<Vec<JoinHandle<()>>>,
 }
 
 pub fn init_context(config: Config) -> Arc<ApplicationContext> {
@@ -196,6 +205,7 @@ pub fn init_context(config: Config) -> Arc<ApplicationContext> {
         metrics: None,
         logger: None,
         backpressure_monitors: DashMap::new(),
+        active_jobs: Mutex::new(Vec::new()),
     })
 }
 

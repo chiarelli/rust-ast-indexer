@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
 use serde_json::Value;
+use std::collections::HashMap;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileRecord {
@@ -75,7 +75,11 @@ impl Chunk {
 
 impl std::fmt::Display for Chunk {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Chunk {{ id: {}, file: {}, lines: {}-{} }}", self.id, self.file_path, self.start_line, self.end_line)
+        write!(
+            f,
+            "Chunk {{ id: {}, file: {}, lines: {}-{} }}",
+            self.id, self.file_path, self.start_line, self.end_line
+        )
     }
 }
 
@@ -88,7 +92,20 @@ pub struct ImportEdge {
     pub alias: Option<String>,
     pub import_kind: String,
     pub location: Location,
+    /// `true` sse o **arquivo-alvo** foi identificado (`to_file.is_some()`).
+    ///
+    /// Antes era heurística de texto ("parece local", ex.:
+    /// `contains("crate::")`), que não dizia nada sobre o alvo existir. Com a
+    /// resolução módulo→arquivo no indexer (`domain::resolve`), o flag passou a
+    /// significar o que o consumidor precisa: **existe arquivo para apontar**.
     pub resolved: bool,
+    /// Arquivo-alvo resolvido (caminho relativo ao root varrido).
+    ///
+    /// Aditivo. `None` quando o alvo é externo (stdlib/dependência) ou
+    /// ambíguo (`Go` com vários arquivos no pacote). É o campo que o consumidor
+    /// usa como `to_file` da aresta (ADR-012 D1).
+    #[serde(default)]
+    pub to_file: Option<String>,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

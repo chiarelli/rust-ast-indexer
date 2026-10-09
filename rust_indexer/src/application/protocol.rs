@@ -38,7 +38,6 @@ pub enum ChunkKind {
     Contextual,
 }
 
-
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ChunkEventPayload {
     pub chunk_id: String,

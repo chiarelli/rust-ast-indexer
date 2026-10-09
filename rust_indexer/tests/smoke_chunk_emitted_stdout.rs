@@ -11,7 +11,8 @@ fn spawn_indexer() -> Child {
             .spawn()
             .expect("failed to spawn indexer")
     } else {
-        let possible = std::env::current_dir().unwrap()
+        let possible = std::env::current_dir()
+            .unwrap()
             .join("rust_indexer")
             .join("target")
             .join("debug")
@@ -70,12 +71,24 @@ fn smoke_index_path_emits_chunk_payloads_with_real_structure() {
                 assert_eq!(payload["file"], "lib.rs");
                 assert_eq!(payload["language"], "rust");
                 assert_eq!(payload["chunk_kind"], "Symbol");
-                assert!(payload["chunk_id"].as_str().unwrap_or("").starts_with("chk-"));
+                assert!(payload["chunk_id"]
+                    .as_str()
+                    .unwrap_or("")
+                    .starts_with("chk-"));
                 assert!(payload["symbol_id"].as_str().unwrap_or("").contains("add"));
-                assert!(payload["text"].as_str().unwrap_or("").contains("use std::fmt;"));
-                assert!(payload["text"].as_str().unwrap_or("").contains("pub fn add"));
+                assert!(payload["text"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("use std::fmt;"));
+                assert!(payload["text"]
+                    .as_str()
+                    .unwrap_or("")
+                    .contains("pub fn add"));
                 assert!(payload["start_line"].as_u64().unwrap_or(0) >= 1);
-                assert!(payload["end_line"].as_u64().unwrap_or(0) >= payload["start_line"].as_u64().unwrap_or(0));
+                assert!(
+                    payload["end_line"].as_u64().unwrap_or(0)
+                        >= payload["start_line"].as_u64().unwrap_or(0)
+                );
                 assert!(payload["chunk_md5"].as_str().unwrap_or("").len() >= 8);
                 assert!(payload["size"].as_u64().unwrap_or(0) > 0);
                 saw_chunk = true;

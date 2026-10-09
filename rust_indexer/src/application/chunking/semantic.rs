@@ -30,7 +30,12 @@ impl SemanticChunker {
 }
 
 impl ChunkStrategy for SemanticChunker {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         let Some(symbols) = symbols else {
             return vec![build_full_file_chunk(file_path, source, self.max_lines)];
         };
@@ -40,7 +45,8 @@ impl ChunkStrategy for SemanticChunker {
         }
 
         let mut sorted_symbols = symbols.clone();
-        sorted_symbols.sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
+        sorted_symbols
+            .sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
 
         let mut chunks = Vec::new();
         let mut current_group: Vec<Symbol> = Vec::new();
@@ -71,8 +77,12 @@ impl ChunkStrategy for SemanticChunker {
 
             let next_end = current_end.max(symbol.end_line);
             let next_lines = next_end.saturating_sub(current_start) + 1;
-            let same_group = current_key.as_ref().zip(symbol_key.as_ref()).is_some_and(|(a, b)| a == b);
-            let close_enough = symbol.start_line <= current_end.saturating_add(self.semantic_gap_lines);
+            let same_group = current_key
+                .as_ref()
+                .zip(symbol_key.as_ref())
+                .is_some_and(|(a, b)| a == b);
+            let close_enough =
+                symbol.start_line <= current_end.saturating_add(self.semantic_gap_lines);
             let fits_limit = self.max_lines == 0 || next_lines <= self.max_lines;
             let within_anchor = current_anchor_end.is_some_and(|anchor_end| {
                 is_member_symbol(&symbol) && symbol.end_line <= anchor_end
@@ -80,7 +90,8 @@ impl ChunkStrategy for SemanticChunker {
 
             if (same_group || within_anchor) && close_enough && fits_limit {
                 current_end = next_end;
-                current_anchor_end = current_anchor_end.map(|anchor_end| anchor_end.max(symbol.end_line));
+                current_anchor_end =
+                    current_anchor_end.map(|anchor_end| anchor_end.max(symbol.end_line));
                 current_group.push(symbol);
             } else {
                 flush_group(FlushGroupParams {
@@ -121,7 +132,10 @@ impl ChunkStrategy for SemanticChunker {
 fn build_full_file_chunk(file_path: &str, source: &str, max_lines: usize) -> Chunk {
     let content = source.to_string();
     let mut metadata = HashMap::from([
-        ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
+        (
+            "chunk_strategy".to_string(),
+            serde_json::Value::String("semantic".to_string()),
+        ),
         (
             "max_line_limit".to_string(),
             serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
@@ -152,10 +166,17 @@ fn flush_group(params: FlushGroupParams) {
     }
 
     let content = lines_to_string(params.source, params.start_line, params.end_line);
-    let symbol_ids = params.group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
+    let symbol_ids = params
+        .group
+        .iter()
+        .map(|symbol| symbol.id.clone())
+        .collect::<Vec<_>>();
     let symbol_id = symbol_ids.first().cloned();
     let mut metadata = HashMap::from([
-        ("chunk_strategy".to_string(), serde_json::Value::String("semantic".to_string())),
+        (
+            "chunk_strategy".to_string(),
+            serde_json::Value::String("semantic".to_string()),
+        ),
         (
             "max_line_limit".to_string(),
             serde_json::Value::Number(serde_json::Number::from(params.max_lines as u64)),
@@ -163,7 +184,10 @@ fn flush_group(params: FlushGroupParams) {
     ]);
 
     if let Some(key) = params.group_key {
-        metadata.insert("semantic_key".to_string(), serde_json::Value::String(key.to_string()));
+        metadata.insert(
+            "semantic_key".to_string(),
+            serde_json::Value::String(key.to_string()),
+        );
     }
 
     metadata.insert(
@@ -172,7 +196,13 @@ fn flush_group(params: FlushGroupParams) {
     );
     apply_token_count(&mut metadata, &content);
 
-    let digest_input = format!("{}:{}:{}:{}", params.file_path, params.start_line, params.end_line, symbol_ids.join("|"));
+    let digest_input = format!(
+        "{}:{}:{}:{}",
+        params.file_path,
+        params.start_line,
+        params.end_line,
+        symbol_ids.join("|")
+    );
     let digest = blake3::hash(digest_input.as_bytes()).to_hex().to_string();
 
     params.chunks.push(Chunk {
@@ -216,7 +246,9 @@ fn lines_to_string(source: &str, start: usize, end: usize) -> String {
 fn semantic_key(symbol: &Symbol) -> Option<String> {
     let kind = symbol.kind.to_lowercase();
     match kind.as_str() {
-        "struct" | "class" | "trait" | "enum" | "type" | "mod" => Some(normalize_name(&symbol.name)),
+        "struct" | "class" | "trait" | "enum" | "type" | "mod" => {
+            Some(normalize_name(&symbol.name))
+        }
         "impl" => extract_impl_target(symbol.signature.as_deref().unwrap_or(&symbol.name))
             .or_else(|| Some(normalize_name(&symbol.name))),
         "method" | "constructor" | "field" => symbol.scope.as_deref().map(scope_key),
@@ -230,7 +262,11 @@ fn semantic_key(symbol: &Symbol) -> Option<String> {
 }
 
 fn fallback_key(symbol: &Symbol) -> String {
-    format!("{}:{}", symbol.kind.to_lowercase(), normalize_name(&symbol.name))
+    format!(
+        "{}:{}",
+        symbol.kind.to_lowercase(),
+        normalize_name(&symbol.name)
+    )
 }
 
 fn normalize_name(value: &str) -> String {
@@ -244,26 +280,39 @@ fn scope_key(scope: &str) -> String {
 fn extract_impl_target(signature: &str) -> Option<String> {
     let signature = signature.trim();
     let signature = signature.strip_prefix("impl")?.trim_start();
-    let signature = signature.split_once('{').map(|(head, _)| head).unwrap_or(signature);
-    let signature = signature.split_once(" where ").map(|(head, _)| head).unwrap_or(signature);
+    let signature = signature
+        .split_once('{')
+        .map(|(head, _)| head)
+        .unwrap_or(signature);
+    let signature = signature
+        .split_once(" where ")
+        .map(|(head, _)| head)
+        .unwrap_or(signature);
     let target = signature
         .rfind(" for ")
         .map(|idx| &signature[idx + 5..])
         .unwrap_or(signature)
         .trim();
 
-    target
-        .split_whitespace()
-        .next()
-        .map(|value| value.trim_matches(|ch: char| matches!(ch, '<' | '>' | '{' | '}' | '(' | ')' | ',' | ';')).to_lowercase())
+    target.split_whitespace().next().map(|value| {
+        value
+            .trim_matches(|ch: char| matches!(ch, '<' | '>' | '{' | '}' | '(' | ')' | ',' | ';'))
+            .to_lowercase()
+    })
 }
 
 fn is_anchor_symbol(symbol: &Symbol) -> bool {
-    matches!(symbol.kind.to_lowercase().as_str(), "struct" | "class" | "trait" | "enum" | "type" | "mod" | "impl")
+    matches!(
+        symbol.kind.to_lowercase().as_str(),
+        "struct" | "class" | "trait" | "enum" | "type" | "mod" | "impl"
+    )
 }
 
 fn is_member_symbol(symbol: &Symbol) -> bool {
-    matches!(symbol.kind.to_lowercase().as_str(), "method" | "constructor" | "function" | "field")
+    matches!(
+        symbol.kind.to_lowercase().as_str(),
+        "method" | "constructor" | "function" | "field"
+    )
 }
 
 #[cfg(test)]
@@ -296,11 +345,43 @@ mod tests {
     fn semantic_chunker_groups_struct_impl_and_methods() {
         let source = "pub struct UserService {\n    repo: Repo,\n}\n\nimpl UserService {\n    pub fn new() -> Self {\n        Self { repo: Repo::new() }\n    }\n\n    pub fn add(&self) {\n        println!(\"add\");\n    }\n}\n\nfn unrelated() {}\n";
         let symbols = vec![
-            symbol("sym::user_service", "UserService", "struct", None, None, 1, 3),
-            symbol("sym::user_service_impl", "UserService", "impl", None, Some("impl UserService {"), 5, 12),
+            symbol(
+                "sym::user_service",
+                "UserService",
+                "struct",
+                None,
+                None,
+                1,
+                3,
+            ),
+            symbol(
+                "sym::user_service_impl",
+                "UserService",
+                "impl",
+                None,
+                Some("impl UserService {"),
+                5,
+                12,
+            ),
             symbol("sym::new", "new", "method", Some("UserService"), None, 6, 8),
-            symbol("sym::add", "add", "method", Some("UserService"), None, 10, 12),
-            symbol("sym::unrelated", "unrelated", "function", None, None, 15, 15),
+            symbol(
+                "sym::add",
+                "add",
+                "method",
+                Some("UserService"),
+                None,
+                10,
+                12,
+            ),
+            symbol(
+                "sym::unrelated",
+                "unrelated",
+                "function",
+                None,
+                None,
+                15,
+                15,
+            ),
         ];
 
         let chunker = SemanticChunker::new(0);
@@ -310,8 +391,21 @@ mod tests {
         assert_eq!(chunks[0].symbol_ids.len(), 4);
         assert!(chunks[0].content.contains("pub struct UserService"));
         assert!(chunks[0].content.contains("pub fn add"));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("semantic".to_string())));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(0));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("chunk_strategy")),
+            Some(&serde_json::Value::String("semantic".to_string()))
+        );
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("max_line_limit"))
+                .and_then(|value| value.as_u64()),
+            Some(0)
+        );
         assert_eq!(chunks[1].symbol_ids, vec!["sym::unrelated".to_string()]);
     }
 
@@ -336,17 +430,53 @@ mod tests {
         let source = "class Database {\n    connect() { return true; }\n\n    async query(sql) {\n        return [];\n    }\n}\n";
         let symbols = vec![
             symbol("sym::database", "Database", "class", None, None, 1, 7),
-            symbol("sym::connect", "connect", "method", Some("Database"), None, 2, 2),
-            symbol("sym::query", "query", "method", Some("Database"), None, 4, 6),
+            symbol(
+                "sym::connect",
+                "connect",
+                "method",
+                Some("Database"),
+                None,
+                2,
+                2,
+            ),
+            symbol(
+                "sym::query",
+                "query",
+                "method",
+                Some("Database"),
+                None,
+                4,
+                6,
+            ),
         ];
 
         let chunker = SemanticChunker::new(0);
         let chunks = chunker.chunk_file("src/lib.ts", source, Some(&symbols));
 
         assert_eq!(chunks.len(), 1);
-        assert_eq!(chunks[0].symbol_ids, vec!["sym::database".to_string(), "sym::connect".to_string(), "sym::query".to_string()]);
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("semantic_key")), Some(&serde_json::Value::String("database".to_string())));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(0));
+        assert_eq!(
+            chunks[0].symbol_ids,
+            vec![
+                "sym::database".to_string(),
+                "sym::connect".to_string(),
+                "sym::query".to_string()
+            ]
+        );
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("semantic_key")),
+            Some(&serde_json::Value::String("database".to_string()))
+        );
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("max_line_limit"))
+                .and_then(|value| value.as_u64()),
+            Some(0)
+        );
     }
 
     #[test]
@@ -354,8 +484,24 @@ mod tests {
         let source = "class Database {\n    connect() { return true; }\n\n    async query(sql) {\n        return [];\n    }\n}\n";
         let symbols = vec![
             symbol("sym::database", "Database", "class", None, None, 1, 7),
-            symbol("sym::connect", "connect", "method", Some("Database"), None, 2, 2),
-            symbol("sym::query", "query", "method", Some("Database"), None, 4, 6),
+            symbol(
+                "sym::connect",
+                "connect",
+                "method",
+                Some("Database"),
+                None,
+                2,
+                2,
+            ),
+            symbol(
+                "sym::query",
+                "query",
+                "method",
+                Some("Database"),
+                None,
+                4,
+                6,
+            ),
         ];
 
         let chunker = SemanticChunker::new(4);
@@ -365,6 +511,13 @@ mod tests {
         assert_eq!(chunks[0].symbol_ids, vec!["sym::database".to_string()]);
         assert_eq!(chunks[1].symbol_ids, vec!["sym::connect".to_string()]);
         assert_eq!(chunks[2].symbol_ids, vec!["sym::query".to_string()]);
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("max_line_limit")).and_then(|value| value.as_u64()), Some(4));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("max_line_limit"))
+                .and_then(|value| value.as_u64()),
+            Some(4)
+        );
     }
 }

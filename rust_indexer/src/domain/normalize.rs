@@ -60,7 +60,10 @@ mod normalize {
     }
 
     /// Normalize multiple symbols, detecting overloads within the same file+kind+name
-    pub fn normalize_symbols(symbols: &[Symbol], file_language: Option<&str>) -> Vec<NormalizedSymbol> {
+    pub fn normalize_symbols(
+        symbols: &[Symbol],
+        file_language: Option<&str>,
+    ) -> Vec<NormalizedSymbol> {
         // Group by (file_path, kind, name) to detect overloads
         let mut groups: HashMap<(String, String, String), Vec<NormalizedSymbol>> = HashMap::new();
 
@@ -99,7 +102,7 @@ mod normalize {
     }
 
     /// Heuristics for normalizing an import edge based on the raw import text and language.
-    /// 
+    ///
     /// The adapters produce a raw `ImportEdge` with `to_module` containing the full import
     /// text and other fields set to defaults. This function refines those fields:
     /// - `to_module`: extracts just the module path
@@ -130,7 +133,12 @@ mod normalize {
         };
 
         // Strip "use " prefix
-        let body = import_body.strip_prefix("use ").unwrap_or(import_body).trim().trim_end_matches(';').trim();
+        let body = import_body
+            .strip_prefix("use ")
+            .unwrap_or(import_body)
+            .trim()
+            .trim_end_matches(';')
+            .trim();
 
         // Detect glob: use foo::*
         if body.ends_with("::*") {
@@ -144,6 +152,7 @@ mod normalize {
                 import_kind: "namespace".to_string(),
                 location: edge.location.clone(),
                 resolved: is_local_rust_module(raw),
+                to_file: edge.to_file.clone(),
             };
         }
 
@@ -160,6 +169,7 @@ mod normalize {
                 import_kind: "named".to_string(),
                 location: edge.location.clone(),
                 resolved: is_local_rust_module(raw),
+                to_file: edge.to_file.clone(),
             };
         }
 
@@ -167,7 +177,10 @@ mod normalize {
         let parts: Vec<&str> = body.split("::").collect();
         let (module, symbol) = if parts.len() > 1 {
             // module is everything except last segment
-            (parts[..parts.len() - 1].join("::"), Some(parts[parts.len() - 1].to_string()))
+            (
+                parts[..parts.len() - 1].join("::"),
+                Some(parts[parts.len() - 1].to_string()),
+            )
         } else {
             (body.to_string(), None)
         };
@@ -185,11 +198,16 @@ mod normalize {
             },
             location: edge.location.clone(),
             resolved: is_local_rust_module(raw),
+            to_file: edge.to_file.clone(),
         }
     }
 
     fn is_local_rust_module(raw: &str) -> bool {
-        raw.contains("crate::") || raw.contains("self::") || raw.contains("super::") || raw.contains("./") || raw.contains("../")
+        raw.contains("crate::")
+            || raw.contains("self::")
+            || raw.contains("super::")
+            || raw.contains("./")
+            || raw.contains("../")
     }
 
     fn normalize_ts_import(edge: &ImportEdge, raw: &str) -> ImportEdge {
@@ -203,7 +221,8 @@ mod normalize {
         if let Some(content) = bare_string {
             // Check if it's just a quoted string
             if content.starts_with('"') && content.ends_with('"')
-                || content.starts_with('\'') && content.ends_with('\'') {
+                || content.starts_with('\'') && content.ends_with('\'')
+            {
                 return ImportEdge {
                     id: edge.id.clone(),
                     from_file: edge.from_file.clone(),
@@ -213,6 +232,7 @@ mod normalize {
                     import_kind: "side_effect".to_string(),
                     location: edge.location.clone(),
                     resolved: is_local_relative_import(content),
+                    to_file: edge.to_file.clone(),
                 };
             }
 
@@ -230,6 +250,7 @@ mod normalize {
                         import_kind: "namespace".to_string(),
                         location: edge.location.clone(),
                         resolved: is_local_relative_import(&module_part),
+                        to_file: edge.to_file.clone(),
                     };
                 }
             }
@@ -250,11 +271,15 @@ mod normalize {
                         import_kind: "default".to_string(),
                         location: edge.location.clone(),
                         resolved: is_local_relative_import(&module_part),
+                        to_file: edge.to_file.clone(),
                     };
                 }
 
                 // Named import with braces: import { x, y as z } from "module"
-                if let Some(symbols) = before_from.strip_prefix('{').and_then(|s| s.strip_suffix('}')) {
+                if let Some(symbols) = before_from
+                    .strip_prefix('{')
+                    .and_then(|s| s.strip_suffix('}'))
+                {
                     let symbols = symbols.trim();
                     // Check for alias
                     if let Some(idx) = symbols.rfind(" as ") {
@@ -269,6 +294,7 @@ mod normalize {
                             import_kind: "named".to_string(),
                             location: edge.location.clone(),
                             resolved: is_local_relative_import(&module_part),
+                            to_file: edge.to_file.clone(),
                         };
                     }
                     // Single named import
@@ -276,11 +302,16 @@ mod normalize {
                         id: edge.id.clone(),
                         from_file: edge.from_file.clone(),
                         to_module: module_part.clone(),
-                        imported_symbol: if symbols.is_empty() { None } else { Some(symbols.to_string()) },
+                        imported_symbol: if symbols.is_empty() {
+                            None
+                        } else {
+                            Some(symbols.to_string())
+                        },
                         alias: None,
                         import_kind: "named".to_string(),
                         location: edge.location.clone(),
                         resolved: is_local_relative_import(&module_part),
+                        to_file: edge.to_file.clone(),
                     };
                 }
             }
@@ -305,7 +336,12 @@ mod normalize {
 
     fn normalize_java_import(edge: &ImportEdge, _raw: &str) -> ImportEdge {
         let trimmed = edge.to_module.trim();
-        let body = trimmed.strip_prefix("import ").unwrap_or(trimmed).trim().trim_end_matches(';').trim();
+        let body = trimmed
+            .strip_prefix("import ")
+            .unwrap_or(trimmed)
+            .trim()
+            .trim_end_matches(';')
+            .trim();
 
         // Detect static imports
         if let Some(rest) = body.strip_prefix("static ") {
@@ -324,6 +360,7 @@ mod normalize {
                 import_kind: "named".to_string(),
                 location: edge.location.clone(),
                 resolved: false,
+                to_file: edge.to_file.clone(),
             };
         }
 
@@ -344,16 +381,23 @@ mod normalize {
             import_kind: "named".to_string(),
             location: edge.location.clone(),
             resolved: false,
+            to_file: edge.to_file.clone(),
         }
     }
 
     fn normalize_go_import(edge: &ImportEdge, _raw: &str) -> ImportEdge {
         let trimmed = edge.to_module.trim();
-        let body = trimmed.strip_prefix("import ").unwrap_or(trimmed).trim().trim_end_matches(';').trim();
+        let body = trimmed
+            .strip_prefix("import ")
+            .unwrap_or(trimmed)
+            .trim()
+            .trim_end_matches(';')
+            .trim();
 
         // Strip quotes
         let module_str = if (body.starts_with('"') && body.ends_with('"'))
-            || (body.starts_with('`') && body.ends_with('`')) {
+            || (body.starts_with('`') && body.ends_with('`'))
+        {
             &body[1..body.len() - 1]
         } else {
             body
@@ -371,6 +415,7 @@ mod normalize {
             import_kind: "named".to_string(),
             location: edge.location.clone(),
             resolved: module_str.starts_with("./") || module_str.starts_with("../"),
+            to_file: edge.to_file.clone(),
         }
     }
 
@@ -379,7 +424,14 @@ mod normalize {
         use super::*;
 
         /// Helper to build a Symbol for tests
-        fn make_symbol(name: &str, kind: &str, scope: Option<&str>, file_path: &str, start_line: usize, end_line: usize) -> Symbol {
+        fn make_symbol(
+            name: &str,
+            kind: &str,
+            scope: Option<&str>,
+            file_path: &str,
+            start_line: usize,
+            end_line: usize,
+        ) -> Symbol {
             Symbol {
                 id: format!("{}:{}", file_path, name),
                 name: name.to_string(),
@@ -443,14 +495,28 @@ mod normalize {
 
             #[test]
             fn normalizes_nested_class_method() {
-                let sym = make_symbol("addUser", "method", Some("UserService"), "UserService.ts", 10, 15);
+                let sym = make_symbol(
+                    "addUser",
+                    "method",
+                    Some("UserService"),
+                    "UserService.ts",
+                    10,
+                    15,
+                );
                 let norm = normalize_symbol(&sym, Some("typescript")).expect("should succeed");
                 assert_eq!(norm.qualified_name, "UserService::addUser");
             }
 
             #[test]
             fn normalizes_deeply_nested_symbol() {
-                let sym = make_symbol("handle", "function", Some("api::routes::users"), "routes.rs", 20, 30);
+                let sym = make_symbol(
+                    "handle",
+                    "function",
+                    Some("api::routes::users"),
+                    "routes.rs",
+                    20,
+                    30,
+                );
                 let norm = normalize_symbol(&sym, Some("rust")).expect("should succeed");
                 assert_eq!(norm.qualified_name, "api::routes::users::handle");
             }
@@ -458,14 +524,20 @@ mod normalize {
             #[test]
             fn empty_name_returns_error() {
                 let sym = make_symbol("", "function", None, "main.rs", 0, 5);
-                assert!(matches!(normalize_symbol(&sym, None), Err(NormalizeError::EmptySymbolName)));
+                assert!(matches!(
+                    normalize_symbol(&sym, None),
+                    Err(NormalizeError::EmptySymbolName)
+                ));
             }
 
             #[test]
             fn empty_id_returns_error() {
                 let mut sym = make_symbol("fn", "function", None, "main.rs", 0, 5);
                 sym.id = String::new();
-                assert!(matches!(normalize_symbol(&sym, None), Err(NormalizeError::EmptySymbolId)));
+                assert!(matches!(
+                    normalize_symbol(&sym, None),
+                    Err(NormalizeError::EmptySymbolId)
+                ));
             }
 
             #[test]
@@ -480,7 +552,10 @@ mod normalize {
                 let mut sym = make_symbol("compute", "function", None, "math.rs", 0, 3);
                 sym.signature = Some("fn compute(a: u32, b: u32) -> u32".to_string());
                 let norm = normalize_symbol(&sym, Some("rust")).expect("should succeed");
-                assert_eq!(norm.signature.as_deref(), Some("fn compute(a: u32, b: u32) -> u32"));
+                assert_eq!(
+                    norm.signature.as_deref(),
+                    Some("fn compute(a: u32, b: u32) -> u32")
+                );
             }
         }
 
@@ -604,10 +679,20 @@ mod normalize {
                 let symbols = vec![
                     make_symbol("Module", "mod", None, "lib.rs", 0, 10),
                     make_symbol("Nested", "struct", Some("Module"), "lib.rs", 1, 5),
-                    make_symbol("deep_fn", "function", Some("Module::Nested"), "lib.rs", 2, 4),
+                    make_symbol(
+                        "deep_fn",
+                        "function",
+                        Some("Module::Nested"),
+                        "lib.rs",
+                        2,
+                        4,
+                    ),
                 ];
                 let normalized = normalize_symbols(&symbols, Some("rust"));
-                let deep = normalized.iter().find(|s| s.name == "deep_fn").expect("should find deep_fn");
+                let deep = normalized
+                    .iter()
+                    .find(|s| s.name == "deep_fn")
+                    .expect("should find deep_fn");
                 assert_eq!(deep.qualified_name, "Module::Nested::deep_fn");
             }
         }
@@ -777,8 +862,14 @@ mod normalize {
                     imported_symbol: None,
                     alias: None,
                     import_kind: "named".to_string(),
-                    location: crate::domain::types::Location { start_line: 1, start_col: 0, end_line: 1, end_col: 30 },
+                    location: crate::domain::types::Location {
+                        start_line: 1,
+                        start_col: 0,
+                        end_line: 1,
+                        end_col: 30,
+                    },
                     resolved: false,
+                    to_file: None,
                 }
             }
         }

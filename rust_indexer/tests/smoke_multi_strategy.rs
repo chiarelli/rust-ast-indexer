@@ -104,29 +104,52 @@ fn test_user_service() {
 
     let semantic_chunks = SemanticChunker::new(0).chunk_file(file_path, source, Some(&symbols));
     assert_eq!(semantic_chunks.len(), 3);
-    assert!(semantic_chunks.iter().any(|c| c.symbol_ids.iter().any(|id| id.contains("UserService"))));
+    assert!(semantic_chunks
+        .iter()
+        .any(|c| c.symbol_ids.iter().any(|id| id.contains("UserService"))));
 
     let size_chunks = SizeLimitedChunker::new(15).chunk_file(file_path, source, Some(&symbols));
     assert!(!size_chunks.is_empty());
     assert!(size_chunks.iter().all(|c| c.end_line >= c.start_line));
-    assert!(size_chunks.iter().all(|c| (c.end_line - c.start_line + 1) <= 15));
+    assert!(size_chunks
+        .iter()
+        .all(|c| (c.end_line - c.start_line + 1) <= 15));
 
     let line_chunks = LineLimitedChunker::new(20).chunk_file(file_path, source, Some(&symbols));
     assert!(!line_chunks.is_empty());
-    assert!(line_chunks.iter().all(|c| (c.end_line - c.start_line + 1) <= 20));
+    assert!(line_chunks
+        .iter()
+        .all(|c| (c.end_line - c.start_line + 1) <= 20));
 
-    let context_chunks = ContextInjectionChunker::new(SemanticChunker::new(0))
-        .chunk_file(file_path, source, Some(&symbols));
+    let context_chunks = ContextInjectionChunker::new(SemanticChunker::new(0)).chunk_file(
+        file_path,
+        source,
+        Some(&symbols),
+    );
     assert!(!context_chunks.is_empty());
-    assert!(context_chunks.iter().all(|c| c.metadata.as_ref().map(|m| m.get("has_context_prefix").is_some()).unwrap_or(false)));
+    assert!(context_chunks.iter().all(|c| c
+        .metadata
+        .as_ref()
+        .map(|m| m.get("has_context_prefix").is_some())
+        .unwrap_or(false)));
 
-    let overlap_chunks = OverlapChunker::new(SemanticChunker::new(0), 2)
-        .chunk_file(file_path, source, Some(&symbols));
+    let overlap_chunks = OverlapChunker::new(SemanticChunker::new(0), 2).chunk_file(
+        file_path,
+        source,
+        Some(&symbols),
+    );
     assert!(!overlap_chunks.is_empty());
-    assert!(overlap_chunks.iter().any(|c| c.metadata.as_ref().map(|m| m.get("previous_chunk_id").is_some() || m.get("next_chunk_id").is_some()).unwrap_or(false)));
+    assert!(overlap_chunks.iter().any(|c| c
+        .metadata
+        .as_ref()
+        .map(|m| m.get("previous_chunk_id").is_some() || m.get("next_chunk_id").is_some())
+        .unwrap_or(false)));
 
-    let pipeline_chunks = ContextInjectionChunker::new(OverlapChunker::new(SemanticChunker::new(30), 1))
-        .chunk_file(file_path, source, Some(&symbols));
+    let pipeline_chunks = ContextInjectionChunker::new(OverlapChunker::new(
+        SemanticChunker::new(30),
+        1,
+    ))
+    .chunk_file(file_path, source, Some(&symbols));
     assert!(!pipeline_chunks.is_empty());
     assert!(pipeline_chunks.iter().any(|c| c.metadata.is_some()));
 

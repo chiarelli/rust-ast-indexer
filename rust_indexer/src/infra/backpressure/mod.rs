@@ -167,13 +167,11 @@ impl BackpressureConfig {
     /// Panicará em `debug_builds` se `size < MIN_BACKPRESSURE_QUEUE_SIZE`.
     pub fn with_max_queue_size(size: usize) -> Result<Self, BackpressureConfigError> {
         if size < MIN_BACKPRESSURE_QUEUE_SIZE {
-            return Err(BackpressureConfigError::InvalidQueueSize(
-                format!(
-                    "max_queue_size={size} está abaixo do mínimo de \
+            return Err(BackpressureConfigError::InvalidQueueSize(format!(
+                "max_queue_size={size} está abaixo do mínimo de \
                      {MIN_BACKPRESSURE_QUEUE_SIZE}. Um valor maior evita que o \
                      buffer do pipe (~64KB) domine o controle de backpressure.",
-                ),
-            ));
+            )));
         }
         Ok(Self {
             max_queue_size: size,
@@ -189,12 +187,10 @@ impl BackpressureConfig {
     /// Retorna `InvalidThreshold` se `threshold_percent` estiver fora de [80, 99].
     pub fn validate(&self) -> Result<(), BackpressureConfigError> {
         if self.max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE {
-            return Err(BackpressureConfigError::InvalidQueueSize(
-                format!(
-                    "max_queue_size={} é menor que o mínimo de {}.",
-                    self.max_queue_size, MIN_BACKPRESSURE_QUEUE_SIZE,
-                ),
-            ));
+            return Err(BackpressureConfigError::InvalidQueueSize(format!(
+                "max_queue_size={} é menor que o mínimo de {}.",
+                self.max_queue_size, MIN_BACKPRESSURE_QUEUE_SIZE,
+            )));
         }
 
         if !(80..=99).contains(&self.threshold_percent) {
@@ -265,7 +261,10 @@ mod tests {
     #[test]
     fn max_queue_size_below_minimum_rejected() {
         let result = BackpressureConfig::with_max_queue_size(MIN_BACKPRESSURE_QUEUE_SIZE - 1);
-        assert!(result.is_err(), "should reject max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE");
+        assert!(
+            result.is_err(),
+            "should reject max_queue_size < MIN_BACKPRESSURE_QUEUE_SIZE"
+        );
         assert!(matches!(
             result.unwrap_err(),
             BackpressureConfigError::InvalidQueueSize(_)

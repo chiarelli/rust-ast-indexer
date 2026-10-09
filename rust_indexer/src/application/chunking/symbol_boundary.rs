@@ -12,7 +12,12 @@ impl SymbolBoundaryChunker {
 }
 
 impl crate::application::chunking::ChunkStrategy for SymbolBoundaryChunker {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         // If no symbols provided, fall back to full file chunk
         if symbols.is_none() || symbols.as_ref().unwrap().is_empty() {
             let text = source.to_string();
@@ -83,8 +88,8 @@ fn sourcelines_to_string(source: &str, start: usize, end: usize) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::types::Symbol;
     use crate::application::chunking::ChunkStrategy;
+    use crate::domain::types::Symbol;
 
     #[test]
     fn symbol_boundary_chunks_symbols() {
@@ -113,7 +118,11 @@ mod tests {
         };
 
         let chunker = SymbolBoundaryChunker::new(0);
-        let chunks = chunker.chunk_file("src/lib.rs", source, Some(&vec![sym_a.clone(), sym_b.clone()]));
+        let chunks = chunker.chunk_file(
+            "src/lib.rs",
+            source,
+            Some(&vec![sym_a.clone(), sym_b.clone()]),
+        );
         assert_eq!(chunks.len(), 2);
         let a_chunk = &chunks[0];
         assert_eq!(a_chunk.symbol_id.as_deref(), Some("sym::a"));
@@ -155,4 +164,3 @@ mod tests {
         assert!(chunks.is_empty());
     }
 }
-

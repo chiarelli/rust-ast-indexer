@@ -71,9 +71,54 @@ pub fn run_cli(ctx: Arc<ApplicationContext>) {
         }
     }
 
-    // Give spawned background job threads a short grace period to emit events before exiting.
-    // This keeps the binary usable as a short-lived child process in smoke tests.
-    std::thread::sleep(std::time::Duration::from_millis(100));
+    // Fim do stdin: os jobs rodam em threads próprias (o loop precisa seguir
+    // livre para processar `pause`/`ack`). Sem esperá-las, o processo morre no
+    // meio da indexação: a saída sai truncada e o `job_completed` nunca chega.
+    drain_active_jobs(&ctx);
+}
+
+/// Registra o handle da thread de job em `ctx.active_jobs`.
+///
+/// Sem isto, `drain_active_jobs` drenaria uma lista vazia e o processo
+/// continuaria morrendo no meio da indexação — a saída sairia truncada.
+/// O handle é guardado **antes** de a thread rodar, então o drenador nunca
+/// perde um job que ainda não tenha começado.
+fn spawn_tracked<F>(ctx: &Arc<ApplicationContext>, job: F)
+where
+    F: FnOnce() + Send + 'static,
+{
+    let handle = thread::spawn(job);
+    match ctx.active_jobs.lock() {
+        Ok(mut guard) => guard.push(handle),
+        Err(poisoned) => poisoned.into_inner().push(handle),
+    }
+}
+
+/// Espera os jobs em background terminarem antes de o processo sair.
+///
+/// Fase 1 — **força o resume** de todos os monitores de backpressure. Um job
+/// pausado espera `ack` do consumidor, que não virá mais (stdin fechado), e só
+/// sairia pelo `pause_timeout` de 300s. Sem isto, o join penduraria 5 minutos
+/// num job pausado.
+///
+/// Fase 2 — **join** nos handles. Já sem pausas, os jobs drenam a fila e emitem
+/// `job_completed`. Handles já terminados (join devolve `Err` para thread que
+/// deu panic) são ignorados: um panic não pode derrubar o encerramento.
+fn drain_active_jobs(ctx: &Arc<ApplicationContext>) {
+    // Fase 1: destravar quem estiver pausado esperando ack.
+    for entry in ctx.backpressure_monitors.iter() {
+        entry.value().force_resume();
+    }
+
+    // Fase 2: join. `drain(..)` esvazia a lista sob lock e libera o lock antes
+    // do join — um job que ainda queira registrar handle não fica bloqueado.
+    let handles: Vec<_> = match ctx.active_jobs.lock() {
+        Ok(mut guard) => guard.drain(..).collect(),
+        Err(poisoned) => poisoned.into_inner().drain(..).collect(),
+    };
+    for handle in handles {
+        let _ = handle.join();
+    }
 }
 
 #[allow(dead_code)]
@@ -165,7 +210,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 backpressure: bp_config,
             };
 
-            thread::spawn(move || {
+            let tracker = Arc::clone(&ctx);
+            spawn_tracked(&tracker, move || {
                 // Wait briefly for indexer to create and register its monitor in global context
                 std::thread::sleep(std::time::Duration::from_millis(50));
 
@@ -217,10 +263,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "BACKPRESSURE_CONFIG",
                                 format!("invalid backpressure config: {}", e),
                             ),
-                            _ => (
-                                "WALKER_ERROR",
-                                format!("walker failed: {:?}", err),
-                            ),
+                            _ => ("WALKER_ERROR", format!("walker failed: {:?}", err)),
                         };
                         let ev_error = Event {
                             protocol_version: "1.0.0".into(),
@@ -452,7 +495,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                 backpressure: bp_config,
             };
 
-            thread::spawn(move || {
+            let tracker = Arc::clone(&ctx);
+            spawn_tracked(&tracker, move || {
                 // Wait briefly for indexer to create and register its monitor in global context
                 std::thread::sleep(std::time::Duration::from_millis(50));
 
@@ -520,10 +564,7 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                                 "BACKPRESSURE_CONFIG",
                                 format!("invalid backpressure config: {}", e),
                             ),
-                            _ => (
-                                "WALKER_ERROR",
-                                format!("walker failed: {:?}", err),
-                            ),
+                            _ => ("WALKER_ERROR", format!("walker failed: {:?}", err)),
                         };
                         let ev_error = Event {
                             protocol_version: "1.0.0".into(),

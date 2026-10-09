@@ -12,7 +12,8 @@ fn spawn_indexer() -> Child {
             .spawn()
             .expect("failed to spawn indexer")
     } else {
-        let possible = std::env::current_dir().unwrap()
+        let possible = std::env::current_dir()
+            .unwrap()
             .join("rust_indexer")
             .join("target")
             .join("debug")
@@ -158,15 +159,30 @@ fn smoke_index_path_emits_import_and_call_events() {
             got_import_edge = true;
             // validate basic structure
             let payload = &ev["payload"];
-            assert!(payload["from_file"].as_str().is_some(), "import_edge should have from_file");
-            assert!(payload["to_module"].as_str().is_some(), "import_edge should have to_module");
-            assert!(payload["import_kind"].as_str().is_some(), "import_edge should have import_kind");
+            assert!(
+                payload["from_file"].as_str().is_some(),
+                "import_edge should have from_file"
+            );
+            assert!(
+                payload["to_module"].as_str().is_some(),
+                "import_edge should have to_module"
+            );
+            assert!(
+                payload["import_kind"].as_str().is_some(),
+                "import_edge should have import_kind"
+            );
         }
         if name == "call_edge" {
             got_call_edge = true;
             let payload = &ev["payload"];
-            assert!(payload["callee_name"].as_str().is_some(), "call_edge should have callee_name");
-            assert!(payload["call_kind"].as_str().is_some(), "call_edge should have call_kind");
+            assert!(
+                payload["callee_name"].as_str().is_some(),
+                "call_edge should have callee_name"
+            );
+            assert!(
+                payload["call_kind"].as_str().is_some(),
+                "call_edge should have call_kind"
+            );
         }
         if name == "job_completed" && ev["job_id"] == "job-import-call-smoke" {
             got_completed = true;

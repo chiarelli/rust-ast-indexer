@@ -169,6 +169,7 @@ mod go_adapter {
                             end_col: end.column,
                         },
                         resolved: false,
+                        to_file: None,
                     };
                     edges.push(edge);
                 }
@@ -294,7 +295,13 @@ mod go_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut symbols = Vec::new();
-            Self::walk_tree(&mut cursor, &parsed.source, &parsed.path, None, &mut symbols);
+            Self::walk_tree(
+                &mut cursor,
+                &parsed.source,
+                &parsed.path,
+                None,
+                &mut symbols,
+            );
             Ok(symbols)
         }
 

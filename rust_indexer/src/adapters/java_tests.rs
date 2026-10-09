@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "parsing"))]
 mod tests {
-    use crate::adapters::{LanguageAdapter, java::JavaAdapter};
+    use crate::adapters::{java::JavaAdapter, LanguageAdapter};
 
     #[test]
     fn java_adapter_parses_simple_class() {
@@ -16,8 +16,12 @@ public class HelloWorld {
         assert_eq!(parsed.language, "java");
         assert_eq!(parsed.source_len, src.len());
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
-        assert!(syms.iter().any(|s| s.kind == "class" && s.name == "HelloWorld"));
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
+        assert!(syms
+            .iter()
+            .any(|s| s.kind == "class" && s.name == "HelloWorld"));
         assert!(syms.iter().any(|s| s.kind == "method" && s.name == "main"));
     }
 
@@ -25,7 +29,9 @@ public class HelloWorld {
     fn java_adapter_handles_empty_source() {
         let adapter = JavaAdapter::new();
         let src = "";
-        let parsed = adapter.parse_source(src).expect("parse should succeed on empty");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("parse should succeed on empty");
         assert_eq!(parsed.language, "java");
         assert_eq!(parsed.source_len, 0);
     }
@@ -196,7 +202,9 @@ public class Container {
     fn java_adapter_source_only_whitespace() {
         let adapter = JavaAdapter::new();
         let src = "   \n\n  \t  ";
-        let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("should not crash on whitespace");
         assert_eq!(parsed.language, "java");
     }
 
@@ -207,14 +215,19 @@ public class Container {
 import java.util.List;
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
         // Sem path no ParsedFile (parse_source direto), o adapter cai no
         // placeholder vazio — o caminho real entra via `parsed.path` no
         // pipeline (indexer.rs: parsed.path = file.path.clone()).
         assert_eq!(e.from_file, "");
-        assert!(e.to_module.contains("import java.util.List;") || e.to_module.contains("java.util.List"));
+        assert!(
+            e.to_module.contains("import java.util.List;")
+                || e.to_module.contains("java.util.List")
+        );
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
     }
@@ -231,7 +244,9 @@ public class Test {
 }
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let edges = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         // Should have at least 2 calls: fetch and size
         assert!(edges.len() >= 2);
         // Check that we have fetch call

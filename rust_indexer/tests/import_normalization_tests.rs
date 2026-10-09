@@ -9,8 +9,14 @@ fn test_import_normalization_basic() {
         imported_symbol: None,
         alias: None,
         import_kind: "named".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 40 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 40,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(edge.to_module, "std::collections::HashMap");
@@ -30,8 +36,14 @@ fn test_import_with_alias_after_normalization() {
         imported_symbol: Some("HashMap".to_string()),
         alias: Some("Map".to_string()),
         import_kind: "named".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 50 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 50,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(normalized.imported_symbol, Some("HashMap".to_string()));
@@ -47,8 +59,14 @@ fn test_import_default_kind() {
         imported_symbol: Some("default".to_string()),
         alias: Some("_".to_string()),
         import_kind: "default".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 30 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 30,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(normalized.imported_symbol, Some("default".to_string()));
@@ -64,8 +82,14 @@ fn test_import_namespace_kind() {
         imported_symbol: None,
         alias: Some("fs".to_string()),
         import_kind: "namespace".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 30 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 30,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(normalized.alias, Some("fs".to_string()));
@@ -81,8 +105,14 @@ fn test_import_side_effect_kind() {
         imported_symbol: None,
         alias: None,
         import_kind: "side_effect".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 35 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 35,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(normalized.import_kind, "side_effect");
@@ -99,8 +129,14 @@ fn test_import_reexport_kind() {
         imported_symbol: None,
         alias: None,
         import_kind: "reexport".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 40 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 40,
+        },
         resolved: false,
+        to_file: None,
     };
 
     assert_eq!(normalized.import_kind, "reexport");
@@ -115,8 +151,14 @@ fn test_import_resolved_local() {
         imported_symbol: None,
         alias: None,
         import_kind: "named".to_string(),
-        location: Location { start_line: 1, start_col: 0, end_line: 1, end_col: 30 },
+        location: Location {
+            start_line: 1,
+            start_col: 0,
+            end_line: 1,
+            end_col: 30,
+        },
         resolved: true,
+        to_file: None,
     };
 
     assert!(normalized.resolved);
@@ -132,8 +174,14 @@ fn test_import_edge_serialization() {
         imported_symbol: Some("Vec".to_string()),
         alias: Some("V".to_string()),
         import_kind: "named".to_string(),
-        location: Location { start_line: 10, start_col: 2, end_line: 10, end_col: 30 },
+        location: Location {
+            start_line: 10,
+            start_col: 2,
+            end_line: 10,
+            end_col: 30,
+        },
         resolved: true,
+        to_file: None,
     };
 
     let json = serde_json::to_string(&edge).expect("should serialize");
@@ -159,8 +207,12 @@ fn test_normalize_import_integration_with_adapter() {
         use rust_indexer::domain::normalize_import;
 
         let adapter = RustAdapter::new();
-        let parsed = adapter.parse_source("use std::collections::HashMap;").expect("parse should succeed");
-        let raw_edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let parsed = adapter
+            .parse_source("use std::collections::HashMap;")
+            .expect("parse should succeed");
+        let raw_edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(raw_edges.len(), 1);
 
         let normalized = normalize_import(&raw_edges[0], "rust");

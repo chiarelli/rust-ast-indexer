@@ -1,20 +1,20 @@
 use crate::domain::parser::ParsedFile;
 use crate::domain::types::{CallEdge, ImportEdge, Symbol};
-pub mod rust;
-pub mod typescript;
-pub mod java;
 pub mod go;
-pub mod python;
-#[cfg(all(test, feature = "parsing"))]
-mod rust_tests;
-#[cfg(all(test, feature = "parsing"))]
-mod typescript_tests;
-#[cfg(all(test, feature = "parsing"))]
-mod java_tests;
 #[cfg(all(test, feature = "parsing"))]
 mod go_tests;
+pub mod java;
+#[cfg(all(test, feature = "parsing"))]
+mod java_tests;
+pub mod python;
 #[cfg(all(test, feature = "parsing"))]
 mod python_tests;
+pub mod rust;
+#[cfg(all(test, feature = "parsing"))]
+mod rust_tests;
+pub mod typescript;
+#[cfg(all(test, feature = "parsing"))]
+mod typescript_tests;
 use anyhow::Result;
 
 pub trait LanguageAdapter: Send + Sync + 'static {
@@ -34,8 +34,8 @@ pub trait LanguageAdapter: Send + Sync + 'static {
 }
 
 // Adapter registry (compat shim)
-use std::sync::Arc;
 use crate::app::bootstrap::Registry;
+use std::sync::Arc;
 
 /// Temporary compatibility helpers that delegate to a provided Registry in ApplicationContext.
 /// Migration note: replace usages with ctx.registry.get(...)

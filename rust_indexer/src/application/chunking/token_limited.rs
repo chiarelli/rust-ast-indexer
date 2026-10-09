@@ -14,7 +14,12 @@ impl LineLimitedChunker {
 }
 
 impl ChunkStrategy for LineLimitedChunker {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         let Some(symbols) = symbols else {
             return vec![build_full_file_chunk(file_path, source, self.max_lines)];
         };
@@ -24,7 +29,8 @@ impl ChunkStrategy for LineLimitedChunker {
         }
 
         let mut sorted_symbols = symbols.clone();
-        sorted_symbols.sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
+        sorted_symbols
+            .sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
 
         let mut chunks = Vec::new();
         let mut current_group: Vec<Symbol> = Vec::new();
@@ -40,7 +46,15 @@ impl ChunkStrategy for LineLimitedChunker {
                 current_end = symbol.end_line;
                 current_group.push(symbol);
                 if symbol_over_limit {
-                    flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end, self.max_lines);
+                    flush_group(
+                        file_path,
+                        source,
+                        &mut chunks,
+                        std::mem::take(&mut current_group),
+                        current_start,
+                        current_end,
+                        self.max_lines,
+                    );
                 }
                 continue;
             }
@@ -50,12 +64,28 @@ impl ChunkStrategy for LineLimitedChunker {
             let next_lines = next_end.saturating_sub(current_start) + 1;
 
             if self.max_lines > 0 && (group_lines > self.max_lines || next_lines > self.max_lines) {
-                flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end, self.max_lines);
+                flush_group(
+                    file_path,
+                    source,
+                    &mut chunks,
+                    std::mem::take(&mut current_group),
+                    current_start,
+                    current_end,
+                    self.max_lines,
+                );
                 current_start = symbol.start_line;
                 current_end = symbol.end_line;
                 current_group.push(symbol);
                 if symbol_over_limit {
-                    flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end, self.max_lines);
+                    flush_group(
+                        file_path,
+                        source,
+                        &mut chunks,
+                        std::mem::take(&mut current_group),
+                        current_start,
+                        current_end,
+                        self.max_lines,
+                    );
                 }
             } else {
                 current_end = next_end;
@@ -64,7 +94,15 @@ impl ChunkStrategy for LineLimitedChunker {
         }
 
         if !current_group.is_empty() {
-            flush_group(file_path, source, &mut chunks, current_group, current_start, current_end, self.max_lines);
+            flush_group(
+                file_path,
+                source,
+                &mut chunks,
+                current_group,
+                current_start,
+                current_end,
+                self.max_lines,
+            );
         }
 
         chunks
@@ -74,7 +112,10 @@ impl ChunkStrategy for LineLimitedChunker {
 fn build_full_file_chunk(file_path: &str, source: &str, max_lines: usize) -> Chunk {
     let content = source.to_string();
     let mut metadata = HashMap::from([
-        ("chunk_strategy".to_string(), serde_json::Value::String("line".to_string())),
+        (
+            "chunk_strategy".to_string(),
+            serde_json::Value::String("line".to_string()),
+        ),
         (
             "max_line_limit".to_string(),
             serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
@@ -113,10 +154,16 @@ fn flush_group(
     }
 
     let content = lines_to_string(source, start_line, end_line);
-    let symbol_ids = group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
+    let symbol_ids = group
+        .iter()
+        .map(|symbol| symbol.id.clone())
+        .collect::<Vec<_>>();
     let symbol_id = symbol_ids.first().cloned();
     let mut metadata = HashMap::from([
-        ("chunk_strategy".to_string(), serde_json::Value::String("line".to_string())),
+        (
+            "chunk_strategy".to_string(),
+            serde_json::Value::String("line".to_string()),
+        ),
         (
             "max_line_limit".to_string(),
             serde_json::Value::Number(serde_json::Number::from(max_lines as u64)),
@@ -125,7 +172,20 @@ fn flush_group(
     apply_token_count(&mut metadata, &content);
 
     chunks.push(Chunk {
-        id: format!("chk-line-{}", blake3::hash(format!("{}:{}:{}:{}", file_path, start_line, end_line, symbol_ids.join("|")).as_bytes()).to_hex()),
+        id: format!(
+            "chk-line-{}",
+            blake3::hash(
+                format!(
+                    "{}:{}:{}:{}",
+                    file_path,
+                    start_line,
+                    end_line,
+                    symbol_ids.join("|")
+                )
+                .as_bytes()
+            )
+            .to_hex()
+        ),
         file_path: file_path.to_string(),
         start_line,
         end_line,
@@ -191,14 +251,24 @@ mod tests {
         let chunks = chunker.chunk_file(
             "src/lib.rs",
             source,
-            Some(&vec![symbol("sym::a", 1, 1), symbol("sym::b", 2, 2), symbol("sym::c", 3, 3)]),
+            Some(&vec![
+                symbol("sym::a", 1, 1),
+                symbol("sym::b", 2, 2),
+                symbol("sym::c", 3, 3),
+            ]),
         );
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].symbol_ids, vec!["sym::a", "sym::b", "sym::c"]);
         assert!(chunks[0].content.contains("fn a() {}"));
         assert!(chunks[0].content.contains("fn c() {}"));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("line".to_string())));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("chunk_strategy")),
+            Some(&serde_json::Value::String("line".to_string()))
+        );
     }
 
     #[test]
@@ -208,7 +278,11 @@ mod tests {
         let chunks = chunker.chunk_file(
             "src/lib.rs",
             source,
-            Some(&vec![symbol("sym::a", 1, 1), symbol("sym::b", 2, 2), symbol("sym::c", 3, 3)]),
+            Some(&vec![
+                symbol("sym::a", 1, 1),
+                symbol("sym::b", 2, 2),
+                symbol("sym::c", 3, 3),
+            ]),
         );
 
         assert_eq!(chunks.len(), 2);
@@ -222,7 +296,8 @@ mod tests {
     fn keeps_oversized_symbol_in_its_own_chunk() {
         let source = "fn big() {\n    a();\n    b();\n    c();\n}\n";
         let chunker = LineLimitedChunker::new(2);
-        let chunks = chunker.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::big", 1, 5)]));
+        let chunks =
+            chunker.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::big", 1, 5)]));
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].symbol_ids, vec!["sym::big"]);
@@ -239,6 +314,12 @@ mod tests {
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].chunk_kind.as_deref(), Some("FullFile"));
         assert!(chunks[0].content.contains("fn main"));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("line".to_string())));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("chunk_strategy")),
+            Some(&serde_json::Value::String("line".to_string()))
+        );
     }
 }

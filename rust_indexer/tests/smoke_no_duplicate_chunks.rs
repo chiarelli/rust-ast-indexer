@@ -74,10 +74,7 @@ fn run_index_path_test(job_id: &str, dir: &std::path::Path) {
         let ev = read_next_event(&mut reader);
         match ev["event"].as_str().unwrap_or("") {
             "chunk_emitted" if ev["job_id"] == job_id => {
-                let chunk_id = ev["payload"]["chunk_id"]
-                    .as_str()
-                    .unwrap_or("")
-                    .to_string();
+                let chunk_id = ev["payload"]["chunk_id"].as_str().unwrap_or("").to_string();
                 if !seen_ids.insert(chunk_id.clone()) {
                     duplicate_ids.push(chunk_id);
                 }

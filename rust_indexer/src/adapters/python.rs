@@ -199,6 +199,7 @@ mod python_adapter {
                             end_col: end.column,
                         },
                         resolved: false,
+                        to_file: None,
                     };
                     edges.push(edge);
                 }
@@ -260,7 +261,11 @@ mod python_adapter {
                         ancestor = a.parent();
                     }
 
-                    let call_kind = if callee.contains('.') { "dynamic" } else { "static" };
+                    let call_kind = if callee.contains('.') {
+                        "dynamic"
+                    } else {
+                        "static"
+                    };
 
                     let edge = crate::domain::types::CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
@@ -318,7 +323,13 @@ mod python_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut symbols = Vec::new();
-            Self::walk_tree(&mut cursor, &parsed.source, &parsed.path, None, &mut symbols);
+            Self::walk_tree(
+                &mut cursor,
+                &parsed.source,
+                &parsed.path,
+                None,
+                &mut symbols,
+            );
             Ok(symbols)
         }
 

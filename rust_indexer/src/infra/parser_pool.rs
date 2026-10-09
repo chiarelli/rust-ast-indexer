@@ -93,11 +93,11 @@ mod tests {
 #[cfg(all(test, feature = "parsing"))]
 mod integration_tests {
     use super::*;
+    use crate::adapters::go::GoAdapter;
     use crate::adapters::java::JavaAdapter;
+    use crate::adapters::python::PythonAdapter;
     use crate::adapters::rust::RustAdapter;
     use crate::adapters::typescript::TypeScriptAdapter;
-    use crate::adapters::go::GoAdapter;
-    use crate::adapters::python::PythonAdapter;
 
     fn build_pool() -> ParserPool {
         let pool = ParserPool::new();
@@ -400,7 +400,9 @@ public class OrderService {
     #[test]
     fn pool_parse_and_extract_python() {
         let pool = build_pool();
-        let adapter = pool.get("python").expect("python adapter should be registered");
+        let adapter = pool
+            .get("python")
+            .expect("python adapter should be registered");
 
         let source = r#"
 import json
@@ -426,24 +428,42 @@ def start_server(config: AppConfig) -> None:
             .expect("extract should succeed");
 
         assert!(
-            symbols.iter().any(|s| s.kind == "class" && s.name == "AppConfig"),
+            symbols
+                .iter()
+                .any(|s| s.kind == "class" && s.name == "AppConfig"),
             "Expected class AppConfig, got: {:?}",
-            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
         );
         assert!(
-            symbols.iter().any(|s| s.kind == "function" && s.name == "start_server"),
+            symbols
+                .iter()
+                .any(|s| s.kind == "function" && s.name == "start_server"),
             "Expected function start_server, got: {:?}",
-            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
         );
         assert!(
-            symbols.iter().any(|s| s.kind == "function" && s.name == "get_url"),
+            symbols
+                .iter()
+                .any(|s| s.kind == "function" && s.name == "get_url"),
             "Expected function get_url (method), got: {:?}",
-            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
         );
         assert!(
             symbols.iter().any(|s| s.kind == "import"),
             "Expected an import, got: {:?}",
-            symbols.iter().map(|s| format!("{}:{}", s.kind, s.name)).collect::<Vec<_>>()
+            symbols
+                .iter()
+                .map(|s| format!("{}:{}", s.kind, s.name))
+                .collect::<Vec<_>>()
         );
     }
 }

@@ -2,7 +2,7 @@ use std::sync::mpsc;
 use std::sync::Arc;
 
 use rayon::prelude::*;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use crate::app::bootstrap::ApplicationContext;
 use crate::application::chunking::{
@@ -105,13 +105,7 @@ impl Indexer {
             }
             let full_path = std::path::PathBuf::from(path).join(&file.path);
             let text = std::fs::read_to_string(&full_path).unwrap_or_default();
-            let generated = chunk_file_contents(
-                &file.path,
-                &text,
-                lang,
-                None,
-                &opts.chunking,
-            );
+            let generated = chunk_file_contents(&file.path, &text, lang, None, &opts.chunking);
 
             for chunk in generated {
                 let payload = crate::application::protocol::ChunkEventPayload::from(chunk.clone());
@@ -152,10 +146,19 @@ impl Indexer {
             Arc::new(ParserPool::new())
         };
 
+        // Árvore de arquivos do escopo, conhecida ANTES do parse (o `walk_path`
+        // acima roda primeiro). É o que permite resolver módulo→arquivo sem
+        // estado entre execuções e sem parsear alvos: o resolvedor só consulta
+        // esta lista. Ver `domain::resolve` para a fronteira de responsabilidade.
+        let known_files: Arc<HashSet<String>> =
+            Arc::new(files.iter().map(|f| f.path.clone()).collect());
+
         let bp_monitor: Option<Arc<BackpressureMonitor>> = match &opts.backpressure {
-            Some(config) => Some(Arc::new(
-                BackpressureMonitor::new(config.clone(), 0, job_id.clone())?,
-            )),
+            Some(config) => Some(Arc::new(BackpressureMonitor::new(
+                config.clone(),
+                0,
+                job_id.clone(),
+            )?)),
             None => None,
         };
 
@@ -192,8 +195,20 @@ impl Indexer {
                                 if let Ok(imports) = adapter.extract_imports(&parsed) {
                                     let lang_for_norm = lang.clone().unwrap_or_default();
                                     for raw_edge in imports {
-                                        let normalized =
+                                        let mut normalized =
                                             normalize_import(&raw_edge, &lang_for_norm);
+                                        // Resolve módulo → arquivo contra a árvore
+                                        // varrida e reescreve `resolved` com o
+                                        // significado definitivo ("arquivo-alvo
+                                        // identificado"). O símbolo-alvo
+                                        // (`to_symbol_id`) NÃO é resolvido aqui:
+                                        // exige a tabela símbolo→arquivo, que é do
+                                        // consumidor.
+                                        crate::domain::resolve::apply_import_resolution(
+                                            &mut normalized,
+                                            &lang_for_norm,
+                                            &known_files,
+                                        );
                                         crate::infra::jsonl::write_import_event(
                                             job_id.clone(),
                                             &normalized,
@@ -466,6 +481,7 @@ mod tests {
             metrics: None,
             logger: None,
             backpressure_monitors: dashmap::DashMap::new(),
+            active_jobs: std::sync::Mutex::new(Vec::new()),
         })
     }
 

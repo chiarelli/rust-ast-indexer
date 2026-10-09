@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "parsing"))]
 mod tests {
-    use crate::adapters::{LanguageAdapter, python::PythonAdapter};
+    use crate::adapters::{python::PythonAdapter, LanguageAdapter};
 
     #[test]
     fn python_adapter_parses_simple_fn() {
@@ -10,7 +10,9 @@ mod tests {
         assert_eq!(parsed.language, "python");
         assert_eq!(parsed.source_len, src.len());
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
         assert_eq!(syms[0].kind, "function");
@@ -106,7 +108,9 @@ def fibonacci(n: int) -> int:
         let adapter = PythonAdapter::new();
         let src = "import json\nfrom collections import defaultdict";
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 2);
         assert!(!edges[0].resolved);
     }
@@ -118,11 +122,7 @@ def fibonacci(n: int) -> int:
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         assert!(syms[0].signature.is_some());
-        assert!(syms[0]
-            .signature
-            .as_ref()
-            .unwrap()
-            .contains("compute"));
+        assert!(syms[0].signature.as_ref().unwrap().contains("compute"));
     }
 
     #[test]
@@ -154,7 +154,9 @@ def process():
     print(result)
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let edges = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         assert!(
             edges.len() >= 2,
             "Expected >= 2 call edges, got: {}",

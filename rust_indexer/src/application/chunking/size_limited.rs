@@ -12,7 +12,12 @@ impl SizeLimitedChunker {
 }
 
 impl ChunkStrategy for SizeLimitedChunker {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         let Some(symbols) = symbols else {
             return vec![build_full_file_chunk(file_path, source)];
         };
@@ -22,7 +27,8 @@ impl ChunkStrategy for SizeLimitedChunker {
         }
 
         let mut sorted_symbols = symbols.clone();
-        sorted_symbols.sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
+        sorted_symbols
+            .sort_by_key(|symbol| (symbol.start_line, symbol.end_line, symbol.id.clone()));
 
         let mut chunks = Vec::new();
         let mut current_group: Vec<Symbol> = Vec::new();
@@ -38,7 +44,14 @@ impl ChunkStrategy for SizeLimitedChunker {
                 current_end = symbol.end_line;
                 current_group.push(symbol);
                 if symbol_over_limit {
-                    flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end);
+                    flush_group(
+                        file_path,
+                        source,
+                        &mut chunks,
+                        std::mem::take(&mut current_group),
+                        current_start,
+                        current_end,
+                    );
                 }
                 continue;
             }
@@ -48,12 +61,26 @@ impl ChunkStrategy for SizeLimitedChunker {
             let next_lines = next_end.saturating_sub(current_start) + 1;
 
             if self.max_lines > 0 && (group_lines > self.max_lines || next_lines > self.max_lines) {
-                flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end);
+                flush_group(
+                    file_path,
+                    source,
+                    &mut chunks,
+                    std::mem::take(&mut current_group),
+                    current_start,
+                    current_end,
+                );
                 current_start = symbol.start_line;
                 current_end = symbol.end_line;
                 current_group.push(symbol);
                 if symbol_over_limit {
-                    flush_group(file_path, source, &mut chunks, std::mem::take(&mut current_group), current_start, current_end);
+                    flush_group(
+                        file_path,
+                        source,
+                        &mut chunks,
+                        std::mem::take(&mut current_group),
+                        current_start,
+                        current_end,
+                    );
                 }
             } else {
                 current_end = next_end;
@@ -62,7 +89,14 @@ impl ChunkStrategy for SizeLimitedChunker {
         }
 
         if !current_group.is_empty() {
-            flush_group(file_path, source, &mut chunks, current_group, current_start, current_end);
+            flush_group(
+                file_path,
+                source,
+                &mut chunks,
+                current_group,
+                current_start,
+                current_end,
+            );
         }
 
         chunks
@@ -101,11 +135,19 @@ fn flush_group(
     }
 
     let content = lines_to_string(source, start_line, end_line);
-    let symbol_ids = group.iter().map(|symbol| symbol.id.clone()).collect::<Vec<_>>();
+    let symbol_ids = group
+        .iter()
+        .map(|symbol| symbol.id.clone())
+        .collect::<Vec<_>>();
     let symbol_id = symbol_ids.first().cloned();
 
     chunks.push(Chunk {
-        id: format!("chk-{}-{}-{}", file_path.replace('/', "_"), start_line, end_line),
+        id: format!(
+            "chk-{}-{}-{}",
+            file_path.replace('/', "_"),
+            start_line,
+            end_line
+        ),
         file_path: file_path.to_string(),
         start_line,
         end_line,
@@ -171,7 +213,11 @@ mod tests {
         let chunks = chunker.chunk_file(
             "src/lib.rs",
             source,
-            Some(&vec![symbol("sym::a", 1, 1), symbol("sym::b", 2, 2), symbol("sym::c", 3, 3)]),
+            Some(&vec![
+                symbol("sym::a", 1, 1),
+                symbol("sym::b", 2, 2),
+                symbol("sym::c", 3, 3),
+            ]),
         );
 
         assert_eq!(chunks.len(), 1);
@@ -187,7 +233,11 @@ mod tests {
         let chunks = chunker.chunk_file(
             "src/lib.rs",
             source,
-            Some(&vec![symbol("sym::a", 1, 1), symbol("sym::b", 2, 2), symbol("sym::c", 3, 3)]),
+            Some(&vec![
+                symbol("sym::a", 1, 1),
+                symbol("sym::b", 2, 2),
+                symbol("sym::c", 3, 3),
+            ]),
         );
 
         assert_eq!(chunks.len(), 2);
@@ -201,7 +251,8 @@ mod tests {
     fn keeps_oversized_symbol_in_its_own_chunk() {
         let source = "fn big() {\n    a();\n    b();\n    c();\n}\n";
         let chunker = SizeLimitedChunker::new(2);
-        let chunks = chunker.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::big", 1, 5)]));
+        let chunks =
+            chunker.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::big", 1, 5)]));
 
         assert_eq!(chunks.len(), 1);
         assert_eq!(chunks[0].symbol_ids, vec!["sym::big"]);

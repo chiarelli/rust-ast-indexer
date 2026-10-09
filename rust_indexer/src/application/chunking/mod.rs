@@ -1,9 +1,19 @@
 pub trait ChunkStrategy {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<crate::domain::types::Symbol>>) -> Vec<crate::domain::types::Chunk>;
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<crate::domain::types::Symbol>>,
+    ) -> Vec<crate::domain::types::Chunk>;
 }
 
 impl<T: ChunkStrategy + ?Sized> ChunkStrategy for Box<T> {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<crate::domain::types::Symbol>>) -> Vec<crate::domain::types::Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<crate::domain::types::Symbol>>,
+    ) -> Vec<crate::domain::types::Chunk> {
         (**self).chunk_file(file_path, source, symbols)
     }
 }

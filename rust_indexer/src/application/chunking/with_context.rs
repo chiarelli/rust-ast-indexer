@@ -14,7 +14,12 @@ impl<S> ContextInjectionChunker<S> {
 }
 
 impl<S: ChunkStrategy> ChunkStrategy for ContextInjectionChunker<S> {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         let chunks = self.inner.chunk_file(file_path, source, symbols);
         let symbol_index = symbols.map(|items| index_symbols_by_id(items.as_slice()));
 
@@ -51,7 +56,11 @@ fn inject_context(
 }
 
 fn index_symbols_by_id(symbols: &[Symbol]) -> std::collections::HashMap<String, Symbol> {
-    symbols.iter().cloned().map(|symbol| (symbol.id.clone(), symbol)).collect()
+    symbols
+        .iter()
+        .cloned()
+        .map(|symbol| (symbol.id.clone(), symbol))
+        .collect()
 }
 
 fn extract_leading_imports(source: &str) -> Vec<String> {
@@ -149,7 +158,9 @@ fn merge_metadata(
     );
     metadata.insert(
         "context_import_count".into(),
-        serde_json::Value::Number(serde_json::Number::from(imports.iter().filter(|line| !line.is_empty()).count() as u64)),
+        serde_json::Value::Number(serde_json::Number::from(
+            imports.iter().filter(|line| !line.is_empty()).count() as u64,
+        )),
     );
     metadata.insert(
         "context_scope_count".into(),
@@ -167,7 +178,12 @@ mod tests {
     struct StubChunker;
 
     impl ChunkStrategy for StubChunker {
-        fn chunk_file(&self, file_path: &str, _source: &str, _symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+        fn chunk_file(
+            &self,
+            file_path: &str,
+            _source: &str,
+            _symbols: Option<&Vec<Symbol>>,
+        ) -> Vec<Chunk> {
             vec![Chunk {
                 id: format!("chk-{}", file_path),
                 file_path: file_path.into(),
@@ -203,21 +219,42 @@ mod tests {
     fn injects_import_prefix() {
         let source = "use crate::foo;\nuse crate::bar;\n\nfn inner() {}\n";
         let decorator = ContextInjectionChunker::new(StubChunker);
-        let chunks = decorator.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::inner", None)]));
+        let chunks = decorator.chunk_file(
+            "src/lib.rs",
+            source,
+            Some(&vec![symbol("sym::inner", None)]),
+        );
 
         assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].content.starts_with("use crate::foo;\nuse crate::bar;\n\n"));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("has_context_prefix")), Some(&serde_json::Value::Bool(true)));
+        assert!(chunks[0]
+            .content
+            .starts_with("use crate::foo;\nuse crate::bar;\n\n"));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("has_context_prefix")),
+            Some(&serde_json::Value::Bool(true))
+        );
     }
 
     #[test]
     fn preserves_scope_chain_in_prefix() {
         let source = "use crate::foo;\n\nfn inner() {}\n";
         let decorator = ContextInjectionChunker::new(StubChunker);
-        let chunks = decorator.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::inner", Some("services::user::UserService"))]));
+        let chunks = decorator.chunk_file(
+            "src/lib.rs",
+            source,
+            Some(&vec![symbol(
+                "sym::inner",
+                Some("services::user::UserService"),
+            )]),
+        );
 
         assert_eq!(chunks.len(), 1);
-        assert!(chunks[0].content.contains("scope: services::user::UserService"));
+        assert!(chunks[0]
+            .content
+            .contains("scope: services::user::UserService"));
         assert!(chunks[0].content.contains("use crate::foo;"));
     }
 
@@ -225,10 +262,21 @@ mod tests {
     fn avoids_duplicate_context_lines() {
         let source = "use crate::foo;\nuse crate::foo;\n\nfn inner() {}\n";
         let decorator = ContextInjectionChunker::new(StubChunker);
-        let chunks = decorator.chunk_file("src/lib.rs", source, Some(&vec![symbol("sym::inner", Some("svc"))]));
+        let chunks = decorator.chunk_file(
+            "src/lib.rs",
+            source,
+            Some(&vec![symbol("sym::inner", Some("svc"))]),
+        );
 
-        let prefix = chunks[0].content.lines().take_while(|line| !line.is_empty()).collect::<Vec<_>>();
-        let foo_count = prefix.iter().filter(|line| **line == "use crate::foo;").count();
+        let prefix = chunks[0]
+            .content
+            .lines()
+            .take_while(|line| !line.is_empty())
+            .collect::<Vec<_>>();
+        let foo_count = prefix
+            .iter()
+            .filter(|line| **line == "use crate::foo;")
+            .count();
         assert_eq!(foo_count, 1);
     }
 }

@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "parsing"))]
 mod tests {
-    use crate::adapters::{LanguageAdapter, go::GoAdapter};
+    use crate::adapters::{go::GoAdapter, LanguageAdapter};
 
     #[test]
     fn go_adapter_parses_simple_fn() {
@@ -10,7 +10,9 @@ mod tests {
         assert_eq!(parsed.language, "go");
         assert_eq!(parsed.source_len, src.len());
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
         assert_eq!(syms[0].kind, "function");
@@ -20,7 +22,9 @@ mod tests {
     fn go_adapter_handles_empty_source() {
         let adapter = GoAdapter::new();
         let src = "";
-        let parsed = adapter.parse_source(src).expect("parse should succeed on empty");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("parse should succeed on empty");
         assert_eq!(parsed.language, "go");
         assert_eq!(parsed.source_len, 0);
     }
@@ -40,7 +44,9 @@ mod tests {
         let adapter = GoAdapter::new();
         let src = "import \"fmt\"";
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
         // Sem path no ParsedFile (parse_source direto), o adapter cai no
@@ -64,7 +70,9 @@ func main() {
 }
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let edges = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         // Should have at least 2 calls: fmt.Println and len
         assert!(edges.len() >= 2);
         // Check that we have Println call
@@ -89,7 +97,9 @@ func main() {
     fn go_adapter_source_only_whitespace() {
         let adapter = GoAdapter::new();
         let src = "   \n\n  \t  ";
-        let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("should not crash on whitespace");
         assert_eq!(parsed.language, "go");
     }
 
@@ -103,19 +113,29 @@ func main() {
         let mut parsed = adapter.parse_source(src).expect("parse should succeed");
         parsed.path = "internal/pkg/file.go".to_string();
 
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         assert_eq!(edges[0].from_file, "internal/pkg/file.go");
-        assert!(!edges[0].id.contains("<source>"), "id não pode ter placeholder: {}", edges[0].id);
+        assert!(
+            !edges[0].id.contains("<source>"),
+            "id não pode ter placeholder: {}",
+            edges[0].id
+        );
 
-        let calls = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let calls = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         assert!(!calls.is_empty());
         assert_eq!(
             calls[0].caller_symbol_id.as_deref(),
             Some("internal/pkg/file.go:hello")
         );
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
         assert!(syms.iter().all(|s| s.file_path == "internal/pkg/file.go"));
         assert!(syms.iter().all(|s| !s.id.contains("<source>")));
     }

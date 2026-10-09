@@ -6,13 +6,19 @@ use serde_json::Value;
 use std::sync::{Arc, OnceLock};
 
 #[cfg(feature = "token_counting")]
-use wordchipper::{disk_cache::WordchipperDiskCache, load_vocab, TokenEncoder, Tokenizer, TokenizerOptions};
+use wordchipper::{
+    disk_cache::WordchipperDiskCache, load_vocab, TokenEncoder, Tokenizer, TokenizerOptions,
+};
 
 #[cfg(feature = "token_counting")]
 pub fn maybe_token_count(text: &str) -> Option<usize> {
     static TOKENIZER: OnceLock<Option<Arc<Tokenizer<u32>>>> = OnceLock::new();
     let tokenizer = TOKENIZER.get_or_init(load_tokenizer).as_ref()?;
-    tokenizer.encoder().try_encode(text, None).ok().map(|tokens| tokens.len())
+    tokenizer
+        .encoder()
+        .try_encode(text, None)
+        .ok()
+        .map(|tokens| tokens.len())
 }
 
 #[cfg(feature = "token_counting")]

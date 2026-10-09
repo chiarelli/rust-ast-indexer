@@ -1,6 +1,6 @@
 #[cfg(test)]
 mod tests {
-    use crate::adapters::{LanguageAdapter, rust::RustAdapter};
+    use crate::adapters::{rust::RustAdapter, LanguageAdapter};
 
     #[test]
     fn rust_adapter_parses_simple_fn() {
@@ -10,7 +10,9 @@ mod tests {
         assert_eq!(parsed.language, "rust");
         assert_eq!(parsed.source_len, src.len());
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
         assert_eq!(syms[0].kind, "function");
@@ -20,7 +22,9 @@ mod tests {
     fn rust_adapter_handles_empty_source() {
         let adapter = RustAdapter::new();
         let src = "";
-        let parsed = adapter.parse_source(src).expect("parse should succeed on empty");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("parse should succeed on empty");
         assert_eq!(parsed.language, "rust");
         assert_eq!(parsed.source_len, 0);
     }
@@ -116,14 +120,20 @@ impl std::fmt::Display for User {
         let adapter = RustAdapter::new();
         let src = "use std::collections::HashMap;";
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
         // Sem path no ParsedFile (parse_source direto), o adapter cai no
         // placeholder vazio — o caminho real entra via `parsed.path` no
         // pipeline (indexer.rs: parsed.path = file.path.clone()).
         assert_eq!(e.from_file, "");
-        assert!(e.to_module.contains("std::collections") || e.to_module.contains("HashMap") || e.to_module.contains("std"));
+        assert!(
+            e.to_module.contains("std::collections")
+                || e.to_module.contains("HashMap")
+                || e.to_module.contains("std")
+        );
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
     }
@@ -141,7 +151,8 @@ impl std::fmt::Display for User {
     #[test]
     fn rust_adapter_extracts_static() {
         let adapter = RustAdapter::new();
-        let src = "static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);";
+        let src =
+            "static COUNTER: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);";
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let statics: Vec<_> = syms.iter().filter(|s| s.kind == "static").collect();
@@ -222,7 +233,9 @@ mod my_module {
     fn rust_adapter_source_only_whitespace() {
         let adapter = RustAdapter::new();
         let src = "   \n\n  \t  ";
-        let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("should not crash on whitespace");
         assert_eq!(parsed.language, "rust");
     }
 
@@ -236,9 +249,15 @@ fn process() {
 }
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let edges = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         // Should have at least 2 calls: format! and println!
-        assert!(edges.len() >= 2, "Expected >= 2 call edges, got: {}", edges.len());
+        assert!(
+            edges.len() >= 2,
+            "Expected >= 2 call edges, got: {}",
+            edges.len()
+        );
     }
 
     /// O caminho real (`parsed.path`, preenchido pelo pipeline) tem de
@@ -262,9 +281,11 @@ fn process() {
         // a normalização para NOME puro acontece depois, no payload público
         // (`build_call_event` em infra/jsonl.rs). Testar o valor interno aqui é
         // correto — o teste do payload público está em `call_event_*` (jsonl.rs).
-        assert!(calls
-            .iter()
-            .all(|c| c.caller_symbol_id.as_deref().unwrap_or("").starts_with("src/domain/file.rs")));
+        assert!(calls.iter().all(|c| c
+            .caller_symbol_id
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("src/domain/file.rs")));
 
         let syms = adapter.extract_symbols(&parsed).expect("extract_symbols");
         assert!(syms.iter().all(|s| s.file_path == "src/domain/file.rs"));

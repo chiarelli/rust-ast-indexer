@@ -42,6 +42,7 @@ fn build_ctx() -> Arc<ApplicationContext> {
         metrics: None,
         logger: None,
         backpressure_monitors: dashmap::DashMap::new(),
+        active_jobs: std::sync::Mutex::new(Vec::new()),
     })
 }
 

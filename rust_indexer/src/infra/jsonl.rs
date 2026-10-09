@@ -388,9 +388,8 @@ mod tests {
     #[test]
     fn test_emit_with_backpressure_blocks_when_paused_and_resumes_on_force() {
         let config = BackpressureConfig::with_max_queue_size(100).unwrap();
-        let monitor = Arc::new(
-            BackpressureMonitor::new(config, 100, Some("test-job".to_string())).unwrap(),
-        );
+        let monitor =
+            Arc::new(BackpressureMonitor::new(config, 100, Some("test-job".to_string())).unwrap());
 
         // Pre-pause via check_and_maybe_pause (counter=100 >= 100)
         monitor.check_and_maybe_pause();
@@ -474,6 +473,7 @@ mod tests {
                 end_col: 10,
             },
             resolved: true,
+            to_file: None,
         };
 
         let result =
@@ -532,7 +532,11 @@ mod tests {
     fn call_event_strips_only_the_file_prefix() {
         // Casos medidos pelo adversarial: Python slice-subscript e método TS.
         for (from_file, caller, esperado) in [
-            ("pkg/py_probe.py", "pkg/py_probe.py:cache[1:2]", "cache[1:2]"),
+            (
+                "pkg/py_probe.py",
+                "pkg/py_probe.py:cache[1:2]",
+                "cache[1:2]",
+            ),
             ("src/probe.ts", "src/probe.ts:\"do:thing\"", "\"do:thing\""),
             ("src/a.rs", "src/a.rs:T::method", "T::method"),
             ("src/b.go", "src/b.go:M", "M"),

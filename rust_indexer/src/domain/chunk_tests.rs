@@ -18,13 +18,17 @@ mod tests {
             symbol_id: Some("sym1".into()),
             symbol_ids: vec!["sym1".into()],
             chunk_kind: Some("Symbol".into()),
-            metadata: Some(std::collections::HashMap::from([
-                ("tokens".into(), json!(120)),
-            ])),
+            metadata: Some(std::collections::HashMap::from([(
+                "tokens".into(),
+                json!(120),
+            )])),
         };
 
         assert!(c.validate().is_ok());
-        assert_eq!(format!("{}", c), "Chunk { id: chk-1, file: src/lib.rs, lines: 1-10 }");
+        assert_eq!(
+            format!("{}", c),
+            "Chunk { id: chk-1, file: src/lib.rs, lines: 1-10 }"
+        );
     }
 
     #[test]

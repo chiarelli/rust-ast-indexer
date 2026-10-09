@@ -11,7 +11,8 @@ fn spawn_indexer() -> Child {
             .spawn()
             .expect("failed to spawn indexer")
     } else {
-        let possible = std::env::current_dir().unwrap()
+        let possible = std::env::current_dir()
+            .unwrap()
             .join("rust_indexer")
             .join("target")
             .join("debug")

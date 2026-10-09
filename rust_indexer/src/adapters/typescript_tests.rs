@@ -1,6 +1,6 @@
 #[cfg(all(test, feature = "parsing"))]
 mod tests {
-    use crate::adapters::{LanguageAdapter, typescript::TypeScriptAdapter};
+    use crate::adapters::{typescript::TypeScriptAdapter, LanguageAdapter};
 
     #[test]
     fn ts_adapter_parses_simple_fn() {
@@ -10,7 +10,9 @@ mod tests {
         assert_eq!(parsed.language, "typescript");
         assert_eq!(parsed.source_len, src.len());
 
-        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        let syms = adapter
+            .extract_symbols(&parsed)
+            .expect("extract_symbols should run");
         assert_eq!(syms.len(), 1);
         assert_eq!(syms[0].name, "hello");
         assert_eq!(syms[0].kind, "function");
@@ -20,7 +22,9 @@ mod tests {
     fn ts_adapter_handles_empty_source() {
         let adapter = TypeScriptAdapter::new();
         let src = "";
-        let parsed = adapter.parse_source(src).expect("parse should succeed on empty");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("parse should succeed on empty");
         assert_eq!(parsed.language, "typescript");
         assert_eq!(parsed.source_len, 0);
     }
@@ -37,7 +41,13 @@ class UserManager {
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let classes: Vec<_> = syms.iter().filter(|s| s.kind == "class").collect();
-        assert_eq!(classes.len(), 1, "Expected 1 class, got {:?}, symbols: {:?}", classes.len(), syms.iter().map(|s| s.kind.clone()).collect::<Vec<_>>());
+        assert_eq!(
+            classes.len(),
+            1,
+            "Expected 1 class, got {:?}, symbols: {:?}",
+            classes.len(),
+            syms.iter().map(|s| s.kind.clone()).collect::<Vec<_>>()
+        );
         assert_eq!(classes[0].name, "UserManager");
     }
 
@@ -72,7 +82,12 @@ export function getVersion() { return "1.0.0"; }
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let vars: Vec<_> = syms.iter().filter(|s| s.kind == "variable").collect();
-        assert_eq!(vars.len(), 1, "Expected 1 variable, got: {:?}", syms.iter().map(|s| s.kind.clone()).collect::<Vec<_>>());
+        assert_eq!(
+            vars.len(),
+            1,
+            "Expected 1 variable, got: {:?}",
+            syms.iter().map(|s| s.kind.clone()).collect::<Vec<_>>()
+        );
         assert_eq!(vars[0].name, "MAX_RETRIES");
     }
 
@@ -98,7 +113,11 @@ export const VERSION = "1.0.0";
         assert!(kinds.contains(&"import"), "kinds: {:?}", kinds);
         assert!(kinds.contains(&"class"), "kinds: {:?}", kinds);
         assert!(kinds.contains(&"function"), "kinds: {:?}", kinds);
-        assert!(syms.len() >= 3, "Expected >= 3 symbols, got: {}", syms.len());
+        assert!(
+            syms.len() >= 3,
+            "Expected >= 3 symbols, got: {}",
+            syms.len()
+        );
     }
 
     #[test]
@@ -111,8 +130,16 @@ class Container {
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
-        assert!(syms.iter().any(|s| s.kind == "class"), "symbols: {:?}", syms.iter().map(|s| &s.kind).collect::<Vec<_>>());
-        assert!(syms.iter().any(|s| s.kind == "method"), "symbols: {:?}", syms.iter().map(|s| &s.kind).collect::<Vec<_>>());
+        assert!(
+            syms.iter().any(|s| s.kind == "class"),
+            "symbols: {:?}",
+            syms.iter().map(|s| &s.kind).collect::<Vec<_>>()
+        );
+        assert!(
+            syms.iter().any(|s| s.kind == "method"),
+            "symbols: {:?}",
+            syms.iter().map(|s| &s.kind).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -150,7 +177,9 @@ class Container {
     fn ts_adapter_source_only_whitespace() {
         let adapter = TypeScriptAdapter::new();
         let src = "   \n\n  \t  ";
-        let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
+        let parsed = adapter
+            .parse_source(src)
+            .expect("should not crash on whitespace");
         assert_eq!(parsed.language, "typescript");
     }
 
@@ -161,14 +190,18 @@ class Container {
 import { useState, useEffect } from "react";
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        let edges = adapter
+            .extract_imports(&parsed)
+            .expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
         // Sem path no ParsedFile (parse_source direto), o adapter cai no
         // placeholder vazio — o caminho real entra via `parsed.path` no
         // pipeline (indexer.rs: parsed.path = file.path.clone()).
         assert_eq!(e.from_file, "");
-        assert!(e.to_module.contains("import { useState, useEffect } from \"react\";"));
+        assert!(e
+            .to_module
+            .contains("import { useState, useEffect } from \"react\";"));
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
     }
@@ -183,7 +216,9 @@ function process() {
 }
 "#;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
-        let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        let edges = adapter
+            .extract_calls(&parsed)
+            .expect("extract_calls should run");
         // Should have at least 2 calls: fetch and json
         assert!(edges.len() >= 2);
         // Check that we have fetch call
@@ -203,7 +238,11 @@ const greet = (name) => `Hello, ${name}`;
         let parsed = adapter.parse_source(src).expect("parse should succeed");
         let syms = adapter.extract_symbols(&parsed).unwrap();
         let functions: Vec<_> = syms.iter().filter(|s| s.kind == "function").collect();
-        assert!(!functions.is_empty(), "Expected functions, got: {:?}", syms.iter().map(|s| &s.kind).collect::<Vec<_>>());
+        assert!(
+            !functions.is_empty(),
+            "Expected functions, got: {:?}",
+            syms.iter().map(|s| &s.kind).collect::<Vec<_>>()
+        );
     }
 
     #[test]
@@ -234,8 +273,10 @@ const greet = (name) => `Hello, ${name}`;
 
         let calls = adapter.extract_calls(&parsed).expect("extract_calls");
         assert!(!calls.is_empty());
-        assert!(calls
-            .iter()
-            .all(|c| c.caller_symbol_id.as_deref().unwrap_or("").starts_with("src/app.ts")));
+        assert!(calls.iter().all(|c| c
+            .caller_symbol_id
+            .as_deref()
+            .unwrap_or("")
+            .starts_with("src/app.ts")));
     }
 }

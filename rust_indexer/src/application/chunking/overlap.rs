@@ -8,22 +8,34 @@ pub struct OverlapChunker<S> {
 
 impl<S> OverlapChunker<S> {
     pub fn new(inner: S, overlap_lines: usize) -> Self {
-        Self { inner, overlap_lines }
+        Self {
+            inner,
+            overlap_lines,
+        }
     }
 }
 
 impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
-    fn chunk_file(&self, file_path: &str, source: &str, symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+    fn chunk_file(
+        &self,
+        file_path: &str,
+        source: &str,
+        symbols: Option<&Vec<Symbol>>,
+    ) -> Vec<Chunk> {
         let chunks = self.inner.chunk_file(file_path, source, symbols);
         if self.overlap_lines == 0 || chunks.len() < 2 {
             return chunks;
         }
 
-        let mut reordered = chunks
-            .into_iter()
-            .enumerate()
-            .collect::<Vec<_>>();
-        reordered.sort_by_key(|(idx, chunk)| (chunk.file_path.clone(), chunk.start_line, chunk.end_line, *idx));
+        let mut reordered = chunks.into_iter().enumerate().collect::<Vec<_>>();
+        reordered.sort_by_key(|(idx, chunk)| {
+            (
+                chunk.file_path.clone(),
+                chunk.start_line,
+                chunk.end_line,
+                *idx,
+            )
+        });
 
         let mut output = Vec::with_capacity(reordered.len());
         let mut start = 0usize;
@@ -52,7 +64,15 @@ impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
                 };
                 let previous_chunk_id = has_prev.then(|| group[index - 1].1.id.clone());
                 let next_chunk_id = has_next.then(|| group[index + 1].1.id.clone());
-                output.push(expand_chunk(chunk.clone(), source, expanded_start, expanded_end, self.overlap_lines, previous_chunk_id, next_chunk_id));
+                output.push(expand_chunk(
+                    chunk.clone(),
+                    source,
+                    expanded_start,
+                    expanded_end,
+                    self.overlap_lines,
+                    previous_chunk_id,
+                    next_chunk_id,
+                ));
             }
 
             start = end;
@@ -62,7 +82,15 @@ impl<S: ChunkStrategy> ChunkStrategy for OverlapChunker<S> {
     }
 }
 
-fn expand_chunk(mut chunk: Chunk, source: &str, start_line: usize, end_line: usize, overlap_lines: usize, previous_chunk_id: Option<String>, next_chunk_id: Option<String>) -> Chunk {
+fn expand_chunk(
+    mut chunk: Chunk,
+    source: &str,
+    start_line: usize,
+    end_line: usize,
+    overlap_lines: usize,
+    previous_chunk_id: Option<String>,
+    next_chunk_id: Option<String>,
+) -> Chunk {
     let content = lines_to_string(source, start_line, end_line);
     let digest = blake3::hash(content.as_bytes()).to_hex().to_string();
 
@@ -72,10 +100,16 @@ fn expand_chunk(mut chunk: Chunk, source: &str, start_line: usize, end_line: usi
         serde_json::Value::Number(serde_json::Number::from(overlap_lines as u64)),
     );
     if let Some(previous_chunk_id) = previous_chunk_id {
-        metadata.insert("previous_chunk_id".to_string(), serde_json::Value::String(previous_chunk_id));
+        metadata.insert(
+            "previous_chunk_id".to_string(),
+            serde_json::Value::String(previous_chunk_id),
+        );
     }
     if let Some(next_chunk_id) = next_chunk_id {
-        metadata.insert("next_chunk_id".to_string(), serde_json::Value::String(next_chunk_id));
+        metadata.insert(
+            "next_chunk_id".to_string(),
+            serde_json::Value::String(next_chunk_id),
+        );
     }
     if !metadata.contains_key("chunk_strategy") {
         metadata.insert(
@@ -126,7 +160,12 @@ mod tests {
     struct StubChunker;
 
     impl ChunkStrategy for StubChunker {
-        fn chunk_file(&self, file_path: &str, source: &str, _symbols: Option<&Vec<Symbol>>) -> Vec<Chunk> {
+        fn chunk_file(
+            &self,
+            file_path: &str,
+            source: &str,
+            _symbols: Option<&Vec<Symbol>>,
+        ) -> Vec<Chunk> {
             vec![
                 Chunk {
                     id: format!("chk-{}-1", file_path),
@@ -141,7 +180,10 @@ mod tests {
                     symbol_id: Some("sym::a".into()),
                     symbol_ids: vec!["sym::a".into()],
                     chunk_kind: Some("Symbol".into()),
-                    metadata: Some(HashMap::from([(String::from("source"), serde_json::Value::String(source.len().to_string()))])),
+                    metadata: Some(HashMap::from([(
+                        String::from("source"),
+                        serde_json::Value::String(source.len().to_string()),
+                    )])),
                 },
                 Chunk {
                     id: format!("chk-{}-2", file_path),
@@ -175,9 +217,29 @@ mod tests {
         assert_eq!(chunks[1].start_line, 3);
         assert_eq!(chunks[1].end_line, 5);
         assert!(chunks[1].content.contains("line2"));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("overlap_lines")).and_then(|value| value.as_u64()), Some(1));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("chunk_strategy")), Some(&serde_json::Value::String("overlap".to_string())));
-        assert_eq!(chunks[0].metadata.as_ref().and_then(|meta| meta.get("next_chunk_id")).and_then(|value| value.as_str()), Some("chk-src/lib.rs-2"));
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("overlap_lines"))
+                .and_then(|value| value.as_u64()),
+            Some(1)
+        );
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("chunk_strategy")),
+            Some(&serde_json::Value::String("overlap".to_string()))
+        );
+        assert_eq!(
+            chunks[0]
+                .metadata
+                .as_ref()
+                .and_then(|meta| meta.get("next_chunk_id"))
+                .and_then(|value| value.as_str()),
+            Some("chk-src/lib.rs-2")
+        );
     }
 
     #[test]
