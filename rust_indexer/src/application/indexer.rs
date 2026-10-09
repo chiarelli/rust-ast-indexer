@@ -346,7 +346,11 @@ fn chunk_file_contents(
         }
     };
 
-    let chunks: Vec<Chunk> = chunks
+    // `mut` só é necessário quando a feature `token_counting` está ligada
+    // (o pós-processamento de tokens reescreve o metadata); sem ela, o vetor
+    // é apenas montado e devolvido.
+    #[allow(unused_mut)]
+    let mut chunks: Vec<Chunk> = chunks
         .into_iter()
         .map(|mut chunk| {
             chunk.language = language.clone().or(chunk.language.clone());
@@ -359,7 +363,12 @@ fn chunk_file_contents(
     if chunking_opts.token_counting {
         use crate::application::chunking::apply_token_count;
         for chunk in &mut chunks {
-            apply_token_count(chunk);
+            // `apply_token_count` escreve em `metadata` a partir do texto do
+            // chunk — os demais chamadores (with_context, semantic,
+            // token_limited) passam a metadata e o content. Aqui o metadata
+            // pode não existir ainda, então é criado sob demanda.
+            let metadata = chunk.metadata.get_or_insert_with(HashMap::new);
+            apply_token_count(metadata, &chunk.content);
         }
     }
 
