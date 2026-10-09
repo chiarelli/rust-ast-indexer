@@ -77,12 +77,24 @@ impl From<crate::domain::types::Chunk> for ChunkEventPayload {
             })
             .unwrap_or(ChunkKind::Contextual);
 
+        // `symbol_id` no payload público é o NOME do símbolo ("main"), não o
+        // id interno qualificado com o caminho ("src/app.ts:main"). O
+        // consumidor (memtier) monta a identidade como `{file}:{symbol}`
+        // (ADR-002) e exige o valor CRU — mandar o id qualificado produziria
+        // `src/app.ts:src/app.ts:main` (caminho duplicado). O id interno do
+        // `Chunk` segue qualificado (o `with_context` o usa como chave de
+        // lookup no índice de símbolos).
+        let symbol_id = c.symbol_id.as_ref().map(|raw| {
+            let prefix = format!("{}:", c.file_path);
+            raw.strip_prefix(&prefix).unwrap_or(raw).to_string()
+        });
+
         ChunkEventPayload {
             chunk_id: c.id,
             chunk_kind: kind,
             file: c.file_path,
             language: c.language,
-            symbol_id: c.symbol_id,
+            symbol_id,
             start_line: c.start_line,
             end_line: c.end_line,
             text: c.text,

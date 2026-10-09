@@ -43,7 +43,10 @@ mod tests {
         let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        // Sem path no ParsedFile (parse_source direto), o adapter cai no
+        // placeholder vazio — o caminho real entra via `parsed.path` no
+        // pipeline (indexer.rs: parsed.path = file.path.clone()).
+        assert_eq!(e.from_file, "");
         assert_eq!(e.to_module, "import \"fmt\"");
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
@@ -88,5 +91,32 @@ func main() {
         let src = "   \n\n  \t  ";
         let parsed = adapter.parse_source(src).expect("should not crash on whitespace");
         assert_eq!(parsed.language, "go");
+    }
+
+    /// O caminho real do arquivo (`parsed.path`, preenchido pelo pipeline em
+    /// `indexer.rs`) tem de aparecer em `from_file`/`caller_symbol_id` — é o
+    /// que o consumidor (memtier) usa para casar a aresta com o chunk.
+    #[test]
+    fn go_adapter_uses_real_path_when_parsed_path_is_set() {
+        let adapter = GoAdapter::new();
+        let src = "package p\n\nimport \"fmt\"\n\nfunc hello() { fmt.Println(\"x\") }\n";
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "internal/pkg/file.go".to_string();
+
+        let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
+        assert_eq!(edges.len(), 1);
+        assert_eq!(edges[0].from_file, "internal/pkg/file.go");
+        assert!(!edges[0].id.contains("<source>"), "id não pode ter placeholder: {}", edges[0].id);
+
+        let calls = adapter.extract_calls(&parsed).expect("extract_calls should run");
+        assert!(!calls.is_empty());
+        assert_eq!(
+            calls[0].caller_symbol_id.as_deref(),
+            Some("internal/pkg/file.go:hello")
+        );
+
+        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols should run");
+        assert!(syms.iter().all(|s| s.file_path == "internal/pkg/file.go"));
+        assert!(syms.iter().all(|s| !s.id.contains("<source>")));
     }
 }

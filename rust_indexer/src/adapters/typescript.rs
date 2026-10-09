@@ -216,7 +216,7 @@ mod typescript_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
-            Self::collect_imports(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Self::collect_imports(&mut cursor, &parsed.source, &parsed.path, &mut edges);
             Ok(edges)
         }
 
@@ -295,6 +295,7 @@ mod typescript_adapter {
 
                     let edge = crate::domain::types::CallEdge {
                         id: format!("ce:{}:{}:{}", file_path, start.row, start.column),
+                        from_file: Some(file_path.to_string()),
                         caller_symbol_id: caller_id,
                         callee_name: callee.clone(),
                         callee_symbol_id: None,
@@ -328,7 +329,7 @@ mod typescript_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut edges = Vec::new();
-            Self::collect_calls(&mut cursor, &parsed.source, "<source>", &mut edges);
+            Self::collect_calls(&mut cursor, &parsed.source, &parsed.path, &mut edges);
             Ok(edges)
         }
     }
@@ -348,7 +349,7 @@ mod typescript_adapter {
             let (tree, _) = self.parse_tree(&parsed.source)?;
             let mut cursor = tree.walk();
             let mut symbols = Vec::new();
-            Self::walk_tree(&mut cursor, &parsed.source, "<source>", None, &mut symbols);
+            Self::walk_tree(&mut cursor, &parsed.source, &parsed.path, None, &mut symbols);
             Ok(symbols)
         }
 

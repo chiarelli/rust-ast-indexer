@@ -129,7 +129,13 @@ The indexer splits source files into semantically coherent chunks for consumptio
 
 ## Chunk Schema
 
-The `chunk_emitted` event contains a complete `Chunk` structure:
+> **Nota (2026-10-09):** esta seção descreve o **modelo interno `Chunk`** do indexer,
+> NÃO o payload público do evento. O `chunk_emitted` emite um subconjunto:
+> `chunk_id`, `chunk_kind`, `file`, `language`, `symbol_id`, `start_line`,
+> `end_line`, `text`, `chunk_md5`, `size`. Campos como `symbol_ids`, `content`,
+> `strategy` e `metadata` existem só no modelo interno e **não são emitidos**
+> (verificado: as chaves reais do payload não os incluem). O schema canônico do
+> evento está em `doc/protocol.md` § `chunk_emitted`.
 
 ```json
 {
@@ -137,7 +143,7 @@ The `chunk_emitted` event contains a complete `Chunk` structure:
   "chunk_id": "uuid-v4",
   "file_path": "src/services/user.rs",
   "language": "rust",
-  "symbol_ids": ["src/services/user.rs::UserService", "src/services/user.rs::UserService::add"],
+  "symbol_ids": ["UserService", "UserService::add"],
   "content": "pub struct UserService { ... }\n\nimpl UserService { pub fn add(...) { ... } }",
   "start_line": 12,
   "end_line": 45,
@@ -153,6 +159,12 @@ The `chunk_emitted` event contains a complete `Chunk` structure:
   }
 }
 ```
+
+> **Nota (2026-10-09):** o `chunk_emitted` público emite `symbol_id` como NOME puro
+> (`"add"`), com o arquivo no campo `file` — o consumidor monta a identidade como
+> `{file}:{symbol}`. Internamente o `Chunk` guarda o id qualificado
+> (`"src/services/user.rs:add"`), usado como chave de lookup no índice de símbolos.
+> Ver `doc/protocol.md` § `chunk_emitted`.
 
 ### Chunk Fields
 

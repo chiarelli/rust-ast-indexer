@@ -137,5 +137,10 @@ Based on the feature doc, the immediate next tasks are:
 - All events follow the protocol_version "1.0.0" format
 - Backpressure mechanism uses pause/resume rather than explicit ACK in V1
 - Import edges are normalized; call edges are emitted as-is (not normalized)
+- `chunk_emitted.symbol_id` is the bare symbol NAME (`"main"`), not qualified with
+  the file path — the file is in the `file` field. Consumers building a
+  `{file}:{symbol}` key (the `memtier` pattern) must use the value as-is
+- `call_edge` carries the origin file in `from_file`; `caller_symbol_id` is the
+  bare symbol name
 - CLI handlers default extract_imports/extract_calls to true for user convenience
 - Tests set these to false to maintain backward compatibility

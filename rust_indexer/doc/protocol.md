@@ -102,7 +102,11 @@ Payload fields:
 - `chunk_kind`: one of `FullFile` | `Symbol` | `Contextual` (string, PascalCase)
 - `file`: relative path to repository root (string)
 - `language`: detected language or null when unknown (string | null)
-- `symbol_id`: optional symbol id this chunk is associated with (string | null)
+- `symbol_id`: optional symbol id this chunk is associated with (string | null).
+  **Nome do símbolo, NÃO qualificado com o caminho** (ex.: `"main"`, não `"src/app.ts:main"`).
+  O arquivo vem no campo `file`. Consumidores que montam uma chave `{file}:{symbol}`
+  (padrão do `memtier`, ADR-002) devem usar este valor CRU — concatenar com `file`
+  de novo produziria caminho duplicado (`src/app.ts:src/app.ts:main`).
 - `start_line`: starting line number (1-based) included in the chunk (integer)
 - `end_line`: ending line number (inclusive) (integer)
 - `text`: textual content of the chunk (string)
@@ -111,7 +115,7 @@ Payload fields:
 
 Example:
 ```json
-{"protocol_version":"1.0.0","type":"event","event":"chunk_emitted","job_id":"job-123","payload":{"chunk_id":"chunk-1","chunk_kind":"Symbol","file":"src/lib.rs","language":"rust","symbol_id":"sym-1","start_line":10,"end_line":40,"text":"fn foo() {}","chunk_md5":"d41d8cd98f00b204e9800998ecf8427e","size":12}}
+{"protocol_version":"1.0.0","type":"event","event":"chunk_emitted","job_id":"job-123","payload":{"chunk_id":"chunk-1","chunk_kind":"Symbol","file":"src/lib.rs","language":"rust","symbol_id":"foo","start_line":10,"end_line":40,"text":"fn foo() {}","chunk_md5":"d41d8cd98f00b204e9800998ecf8427e","size":12}}
 ```
 
 Notes:
@@ -279,7 +283,8 @@ Emitido quando o adapter detecta uma chamada de função/método durante o parsi
   "event": "call_edge",
   "payload": {
     "id": "ce:<file>:<line>:<col>",
-    "caller_symbol_id": "sym:<file>:<caller_name>",
+    "from_file": "src/lib.rs",
+    "caller_symbol_id": "process",
     "callee_name": "Parser::parse",
     "callee_symbol_id": null,
     "call_kind": "static|dynamic",
@@ -289,10 +294,16 @@ Emitido quando o adapter detecta uma chamada de função/método durante o parsi
 }
 ```
 
+**Campos de origem:** `from_file` é o arquivo que contém a chamada (caminho relativo).
+`caller_symbol_id` é o **nome do símbolo** que faz a chamada (`"process"`), NÃO
+qualificado com o caminho. Antes de 2026-10-09 o arquivo existia apenas embutido no
+`caller_symbol_id` (`"lib.rs:process"`); `from_file` é campo aditivo e os dois juntos
+dão o que o consumidor precisa para casar a aresta com o chunk (padrão `{file}:{symbol}`).
+
 **Exemplo:**
 ```json
 { "type": "event", "event": "call_edge", "payload": {
-  "id": "ce:lib.rs:120:8", "caller_symbol_id": "lib.rs:process",
+  "id": "ce:lib.rs:120:8", "from_file": "lib.rs", "caller_symbol_id": "process",
   "callee_name": "format", "callee_symbol_id": null,
   "call_kind": "static",
   "location": {"start_line":120,"start_col":8,"end_line":120,"end_col":20},

@@ -210,7 +210,10 @@ import java.util.List;
         let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        // Sem path no ParsedFile (parse_source direto), o adapter cai no
+        // placeholder vazio — o caminho real entra via `parsed.path` no
+        // pipeline (indexer.rs: parsed.path = file.path.clone()).
+        assert_eq!(e.from_file, "");
         assert!(e.to_module.contains("import java.util.List;") || e.to_module.contains("java.util.List"));
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
@@ -246,5 +249,25 @@ public class Test {
         assert!(registry.get("java").is_some());
         let langs = registry.list_languages();
         assert!(langs.contains(&"java".to_string()));
+    }
+
+    /// O caminho real (`parsed.path`, preenchido pelo pipeline) tem de
+    /// aparecer em `from_file`/`caller_symbol_id` — é o que o consumidor usa
+    /// para casar a aresta com o chunk.
+    #[test]
+    fn java_adapter_uses_real_path_when_parsed_path_is_set() {
+        let adapter = JavaAdapter::new();
+        let src = "import java.util.List;\n\nclass A { void go() { List.of(); } }\n";
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/main/java/A.java".to_string();
+
+        let imports = adapter.extract_imports(&parsed).expect("extract_imports");
+        assert!(!imports.is_empty());
+        assert_eq!(imports[0].from_file, "src/main/java/A.java");
+        assert!(!imports[0].id.contains("<source>"), "id: {}", imports[0].id);
+
+        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols");
+        assert!(syms.iter().all(|s| s.file_path == "src/main/java/A.java"));
+        assert!(syms.iter().all(|s| !s.id.contains("<source>")));
     }
 }

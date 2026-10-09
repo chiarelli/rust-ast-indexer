@@ -112,6 +112,11 @@ Before integrating a caller, review the documented pitfalls:
   `BACKPRESSURE_CONFIG` error instead of silently failing.
 - **`file_listed` events bypass backpressure** — only chunks (and imports/calls
   when enabled) go through the backpressure control.
+- **`symbol_id` is the bare symbol NAME, not a qualified id** — `chunk_emitted`
+  emits `"main"`, not `"src/app.ts:main"`; the file is in the `file` field.
+  Consumers that build a key as `{file}:{symbol}` must use the value as-is.
+  `call_edge` carries the origin file in its own `from_file` field for the same
+  reason. See [protocol.md](rust_indexer/doc/protocol.md) § `chunk_emitted`.
 
 See [doc/protocol.md](rust_indexer/doc/protocol.md) for the complete protocol
 specification and the [pitfalls section](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste)

@@ -119,7 +119,10 @@ impl std::fmt::Display for User {
         let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        // Sem path no ParsedFile (parse_source direto), o adapter cai no
+        // placeholder vazio — o caminho real entra via `parsed.path` no
+        // pipeline (indexer.rs: parsed.path = file.path.clone()).
+        assert_eq!(e.from_file, "");
         assert!(e.to_module.contains("std::collections") || e.to_module.contains("HashMap") || e.to_module.contains("std"));
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
@@ -236,5 +239,35 @@ fn process() {
         let edges = adapter.extract_calls(&parsed).expect("extract_calls should run");
         // Should have at least 2 calls: format! and println!
         assert!(edges.len() >= 2, "Expected >= 2 call edges, got: {}", edges.len());
+    }
+
+    /// O caminho real (`parsed.path`, preenchido pelo pipeline) tem de
+    /// aparecer em `from_file`/`caller_symbol_id` — é o que o consumidor usa
+    /// para casar a aresta com o chunk.
+    #[test]
+    fn rust_adapter_uses_real_path_when_parsed_path_is_set() {
+        let adapter = RustAdapter::new();
+        let src = "use std::collections::HashMap;\n\nfn hello() { println!(\"x\"); }\n";
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/domain/file.rs".to_string();
+
+        let imports = adapter.extract_imports(&parsed).expect("extract_imports");
+        assert!(!imports.is_empty());
+        assert_eq!(imports[0].from_file, "src/domain/file.rs");
+        assert!(!imports[0].id.contains("<source>"), "id: {}", imports[0].id);
+
+        let calls = adapter.extract_calls(&parsed).expect("extract_calls");
+        assert!(!calls.is_empty());
+        // O ADAPTER produz o id INTERNO qualificado ("src/domain/file.rs:hello");
+        // a normalização para NOME puro acontece depois, no payload público
+        // (`build_call_event` em infra/jsonl.rs). Testar o valor interno aqui é
+        // correto — o teste do payload público está em `call_event_*` (jsonl.rs).
+        assert!(calls
+            .iter()
+            .all(|c| c.caller_symbol_id.as_deref().unwrap_or("").starts_with("src/domain/file.rs")));
+
+        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols");
+        assert!(syms.iter().all(|s| s.file_path == "src/domain/file.rs"));
+        assert!(syms.iter().all(|s| !s.id.contains("<source>")));
     }
 }

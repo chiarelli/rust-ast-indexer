@@ -112,6 +112,11 @@ a ponta. Antes de integrar um caller, revise as armadilhas documentadas:
   erro claro `BACKPRESSURE_CONFIG` em vez de falhar silenciosamente.
 - **Eventos `file_listed` ignoram o backpressure** — apenas chunks (e imports/calls
   quando habilitados) passam pelo controle de backpressure.
+- **`symbol_id` é o NOME do símbolo, não um id qualificado** — o `chunk_emitted`
+  emite `"main"`, não `"src/app.ts:main"`; o arquivo vem no campo `file`.
+  Consumidores que montam a chave `{file}:{symbol}` devem usar o valor como está.
+  O `call_edge` carrega o arquivo de origem no próprio campo `from_file` pelo
+  mesmo motivo. Veja [protocol.md](rust_indexer/doc/protocol.md) § `chunk_emitted`.
 
 Veja [doc/protocol.md](rust_indexer/doc/protocol.md) para a especificação completa
 do protocolo e a [seção de armadilhas](rust_indexer/doc/protocol.md#armadilhas-e-boas-pr%C3%A1ticas-achados-de-teste)

@@ -204,7 +204,8 @@ O foco da V1 é captura estática de arestas detectáveis por análise de AST vi
 ```json
 { "type": "event", "event": "call_edge", "payload": {
   "id": "ce_0001",
-  "caller_symbol_id": "sym_0123",
+  "from_file": "src/lib.rs",
+  "caller_symbol_id": "process",
   "callee_name": "Parser::parse",
   "callee_symbol_id": "sym_0456",
   "call_kind": "static",
@@ -212,6 +213,16 @@ O foco da V1 é captura estática de arestas detectáveis por análise de AST vi
   "resolved": true
 }}
 ```
+
+> **Nota (2026-10-09) — campo `from_file` aditivo.** Antes, o arquivo de origem de
+> uma chamada existia apenas embutido no `caller_symbol_id` qualificado
+> (`"lib.rs:process"`). Com o `caller_symbol_id` passando a ser o NOME puro
+> (`"process"`), o arquivo precisa vir em campo próprio. `from_file` é aditivo
+> (`#[serde(default)]`) e não quebra consumidores antigos.
+>
+> Pelo mesmo motivo, o `symbol_id` do `chunk_emitted` passou a sair como nome puro:
+> o id qualificado produzia caminho duplicado no consumidor (que monta
+> `{file}:{symbol}`). Ver `doc/protocol.md` § `chunk_emitted` / § `call_edge`.
 
 ---
 

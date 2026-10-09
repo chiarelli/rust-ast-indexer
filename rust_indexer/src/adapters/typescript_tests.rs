@@ -164,7 +164,10 @@ import { useState, useEffect } from "react";
         let edges = adapter.extract_imports(&parsed).expect("extract_imports should run");
         assert_eq!(edges.len(), 1);
         let e = &edges[0];
-        assert!(e.from_file.contains("<source>") || e.from_file == "<source>");
+        // Sem path no ParsedFile (parse_source direto), o adapter cai no
+        // placeholder vazio — o caminho real entra via `parsed.path` no
+        // pipeline (indexer.rs: parsed.path = file.path.clone()).
+        assert_eq!(e.from_file, "");
         assert!(e.to_module.contains("import { useState, useEffect } from \"react\";"));
         assert_eq!(e.import_kind, "named");
         assert!(!e.resolved);
@@ -212,5 +215,27 @@ const greet = (name) => `Hello, ${name}`;
         let mut langs = registry.list_languages();
         langs.sort();
         assert_eq!(langs, vec!["javascript", "typescript"]);
+    }
+
+    /// O caminho real (`parsed.path`, preenchido pelo pipeline) tem de
+    /// aparecer em `from_file`/`caller_symbol_id` — é o que o consumidor usa
+    /// para casar a aresta com o chunk.
+    #[test]
+    fn ts_adapter_uses_real_path_when_parsed_path_is_set() {
+        let adapter = TypeScriptAdapter::new();
+        let src = "import { x } from \"./m\";\n\nexport function hello() { x(); }\n";
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/app.ts".to_string();
+
+        let imports = adapter.extract_imports(&parsed).expect("extract_imports");
+        assert!(!imports.is_empty());
+        assert_eq!(imports[0].from_file, "src/app.ts");
+        assert!(!imports[0].id.contains("<source>"), "id: {}", imports[0].id);
+
+        let calls = adapter.extract_calls(&parsed).expect("extract_calls");
+        assert!(!calls.is_empty());
+        assert!(calls
+            .iter()
+            .all(|c| c.caller_symbol_id.as_deref().unwrap_or("").starts_with("src/app.ts")));
     }
 }

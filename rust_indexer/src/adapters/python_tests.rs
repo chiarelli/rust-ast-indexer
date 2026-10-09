@@ -204,4 +204,24 @@ def stop():
         assert_eq!(syms[0].start_line, 0);
         assert!(syms[0].end_line >= 1);
     }
+
+    /// O caminho real (`parsed.path`, preenchido pelo pipeline) tem de
+    /// aparecer em `from_file`/`caller_symbol_id` — é o que o consumidor usa
+    /// para casar a aresta com o chunk.
+    #[test]
+    fn python_adapter_uses_real_path_when_parsed_path_is_set() {
+        let adapter = PythonAdapter::new();
+        let src = "import os\n\n\ndef hello():\n    print(os.getcwd())\n";
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "pkg/mod.py".to_string();
+
+        let imports = adapter.extract_imports(&parsed).expect("extract_imports");
+        assert!(!imports.is_empty());
+        assert_eq!(imports[0].from_file, "pkg/mod.py");
+        assert!(!imports[0].id.contains("<source>"), "id: {}", imports[0].id);
+
+        let syms = adapter.extract_symbols(&parsed).expect("extract_symbols");
+        assert!(syms.iter().all(|s| s.file_path == "pkg/mod.py"));
+        assert!(syms.iter().all(|s| !s.id.contains("<source>")));
+    }
 }

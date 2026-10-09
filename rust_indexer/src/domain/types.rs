@@ -94,6 +94,12 @@ pub struct ImportEdge {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CallEdge {
     pub id: String,
+    /// Arquivo de origem da chamada (caminho relativo ao root do repo).
+    /// Aditivo: antes o arquivo só existia embutido no `caller_symbol_id`
+    /// qualificado ("src/app.ts:main"); com o `caller_symbol_id` passando a
+    /// ser o NOME puro ("main"), o arquivo precisa vir em campo próprio.
+    #[serde(default)]
+    pub from_file: Option<String>,
     pub caller_symbol_id: Option<String>,
     pub callee_name: String,
     pub callee_symbol_id: Option<String>,

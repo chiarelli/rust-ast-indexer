@@ -39,6 +39,31 @@ pub fn write_import_event(job_id: Option<String>, payload: &ImportEdge) {
 }
 
 pub fn build_call_event(job_id: Option<String>, payload: &CallEdge) -> Event {
+    // `caller_symbol_id` no payload público é o NOME do símbolo ("main"), não
+    // o id interno qualificado com o caminho ("src/app.ts:main"). O consumidor
+    // (memtier) casa a aresta com o chunk via `{file}:{symbol}` (ADR-002) e
+    // exige o valor CRU — o id qualificado produziria caminho duplicado.
+    //
+    // O prefixo é removido com `strip_prefix("{from_file}:")`, o MESMO mecanismo
+    // do `chunk_emitted` (protocol.rs) — e não com `rsplit_once(':')`. Nomes
+    // legítimos PODEM conter ':' (ex.: atribuição a slice em Python
+    // `cache[1:2] = build()` → nome `cache[1:2]`); um corte pela ÚLTIMA ':'
+    // truncaria o nome para `2]`, gerando um `caller_symbol_id` que não casa com
+    // nenhum chunk do consumidor (endpoint inexistente → 422). `from_file` é
+    // campo aditivo do `CallEdge` e os adapters o preenchem.
+    let mut payload = payload.clone();
+    if let Some(raw) = payload.caller_symbol_id.take() {
+        let bare = match payload.from_file.as_deref() {
+            Some(file) => raw
+                .strip_prefix(&format!("{}:", file))
+                .unwrap_or(&raw)
+                .to_string(),
+            // Sem `from_file` não há prefixo confiável para remover: preserva o
+            // valor como veio (nunca corta às cegas na última ':').
+            None => raw,
+        };
+        payload.caller_symbol_id = Some(bare);
+    }
     Event {
         protocol_version: "1.0.0".into(),
         r#type: "event".into(),
@@ -463,6 +488,7 @@ mod tests {
 
         let payload = CallEdge {
             id: "call-1".into(),
+            from_file: Some("src/lib.rs".into()),
             caller_symbol_id: Some("caller-symbol".into()),
             callee_name: "callee_function".into(),
             callee_symbol_id: Some("callee-symbol".into()),
@@ -478,5 +504,59 @@ mod tests {
 
         let result = emit_call_with_backpressure(&monitor, Some("test-job".to_string()), &payload);
         assert!(result.is_ok());
+    }
+
+    /// Regressão (revisão adversarial 2026-10-09): o prefixo do
+    /// `caller_symbol_id` é removido por `strip_prefix("{from_file}:")`, NÃO por
+    /// corte na última ':'. Nomes legítimos que contêm ':' têm de sobreviver
+    /// intactos — senão o consumidor não casa a aresta com o chunk (422).
+    fn _call_payload(from_file: &str, caller: &str) -> crate::domain::types::CallEdge {
+        crate::domain::types::CallEdge {
+            id: "ce:1:1".into(),
+            from_file: Some(from_file.into()),
+            caller_symbol_id: Some(caller.into()),
+            callee_name: "f".into(),
+            callee_symbol_id: None,
+            call_kind: "static".into(),
+            location: crate::domain::types::Location {
+                start_line: 1,
+                start_col: 0,
+                end_line: 1,
+                end_col: 5,
+            },
+            resolved: false,
+        }
+    }
+
+    #[test]
+    fn call_event_strips_only_the_file_prefix() {
+        // Casos medidos pelo adversarial: Python slice-subscript e método TS.
+        for (from_file, caller, esperado) in [
+            ("pkg/py_probe.py", "pkg/py_probe.py:cache[1:2]", "cache[1:2]"),
+            ("src/probe.ts", "src/probe.ts:\"do:thing\"", "\"do:thing\""),
+            ("src/a.rs", "src/a.rs:T::method", "T::method"),
+            ("src/b.go", "src/b.go:M", "M"),
+        ] {
+            let ev = build_call_event(None, &_call_payload(from_file, caller));
+            let p = ev.payload.unwrap();
+            assert_eq!(
+                p["caller_symbol_id"].as_str(),
+                Some(esperado),
+                "from_file={from_file:?} caller={caller:?}"
+            );
+            // O arquivo de origem continua no campo próprio.
+            assert_eq!(p["from_file"].as_str(), Some(from_file));
+        }
+    }
+
+    #[test]
+    fn call_event_without_from_file_does_not_cut_blindly() {
+        // Sem `from_file` não há prefixo confiável: preserva o valor inteiro
+        // (nunca corta na última ':').
+        let mut edge = _call_payload("x", "cache[1:2]");
+        edge.from_file = None;
+        let ev = build_call_event(None, &edge);
+        let p = ev.payload.unwrap();
+        assert_eq!(p["caller_symbol_id"].as_str(), Some("cache[1:2]"));
     }
 }

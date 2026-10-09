@@ -16,7 +16,11 @@ A chunk is the unit emitted by the indexer pipeline and serialized in `chunk_emi
 - `md5`: content hash used by event payloads and deduplication
 - `size`: byte size of the chunk content
 - `language`: optional detected language
-- `symbol_id`: primary symbol associated with the chunk, when applicable
+- `symbol_id`: primary symbol associated with the chunk, when applicable.
+  Internally this is the qualified id `"{file_path}:{name}"` (the key used to
+  look up the symbol in the context index). **In the public `chunk_emitted`
+  payload it is emitted as the bare symbol NAME** (`"main"`), because consumers
+  build their own key as `{file}:{symbol}`.
 - `symbol_ids`: all symbol identifiers covered by the chunk
 - `chunk_kind`: `FullFile`, `Symbol`, or `Contextual`
 - `metadata`: extensible key/value bag for context and strategy-specific data

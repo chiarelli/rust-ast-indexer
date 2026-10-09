@@ -128,7 +128,7 @@ Implementar estratégias de geração de chunks a partir de símbolos e código-
   "chunk_id": "uuid-v4",
   "file_path": "src/services/user.rs",
   "language": "rust",
-  "symbol_ids": ["src/services/user.rs::UserService", "src/services/user.rs::UserService::add"],
+  "symbol_ids": ["UserService", "UserService::add"],
   "content": "pub struct UserService { ... }\n\nimpl UserService { pub fn add(...) { ... } }",
   "start_line": 12,
   "end_line": 45,
