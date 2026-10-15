@@ -357,6 +357,7 @@ mod typescript_adapter {
                 None,
                 &mut symbols,
             );
+            crate::adapters::symbol_ids::dedupe_symbol_ids(&mut symbols);
             Ok(symbols)
         }
 

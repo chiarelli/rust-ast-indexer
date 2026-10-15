@@ -120,6 +120,75 @@ export const VERSION = "1.0.0";
         );
     }
 
+    /// Funções anônimas homônimas (ex.: várias `function () {}`) produzem nomes
+    /// iguais; os `symbol_id` precisam ser ÚNICOS por arquivo, senão o consumidor
+    /// (memtier) rejeita o lote inteiro com 422 por duplicidade de identidade.
+    #[test]
+    fn ts_adapter_symbol_ids_unique_for_anonymous_functions() {
+        let adapter = TypeScriptAdapter::new();
+        let src = r#"
+const a = function () { return 1; };
+const b = function () { return 2; };
+const c = function () { return 3; };
+"#;
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/anons.js".to_string();
+        let syms = adapter.extract_symbols(&parsed).unwrap();
+        let functions: Vec<_> = syms.iter().filter(|s| s.kind == "function").collect();
+        assert!(
+            functions.len() >= 2,
+            "expected >=2 anonymous functions, got {:?}",
+            functions.iter().map(|s| &s.id).collect::<Vec<_>>()
+        );
+        let ids: Vec<_> = functions.iter().map(|s| s.id.clone()).collect();
+        let unique: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), unique.len(), "ids colidentes: {ids:?}");
+    }
+
+    /// Nomes legítimos repetidos (ex.: dois métodos `handle`) também colidem;
+    /// a identidade tem de permanecer única por arquivo.
+    #[test]
+    fn ts_adapter_symbol_ids_unique_for_duplicate_names() {
+        let adapter = TypeScriptAdapter::new();
+        let src = r#"
+class A { handle() { return 1; } }
+class B { handle() { return 2; } }
+"#;
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/dup.js".to_string();
+        let syms = adapter.extract_symbols(&parsed).unwrap();
+        let ids: Vec<_> = syms.iter().map(|s| s.id.clone()).collect();
+        let unique: std::collections::HashSet<_> = ids.iter().collect();
+        assert_eq!(ids.len(), unique.len(), "ids colidentes: {ids:?}");
+    }
+
+    /// `symbol_id` é derivado do id interno; nunca pode conter `:` além do
+    /// separador `{file}:` (o consumidor resolve por `split(':').pop()`), sob
+    /// pena de corromper nomes legítimos com ':' (ex.: `cache[1:2]`).
+    #[test]
+    fn ts_adapter_symbol_id_has_single_colon_separator() {
+        let adapter = TypeScriptAdapter::new();
+        let src = r#"
+const a = function () { return 1; };
+const b = function () { return 2; };
+"#;
+        let mut parsed = adapter.parse_source(src).expect("parse should succeed");
+        parsed.path = "src/colons.js".to_string();
+        let syms = adapter.extract_symbols(&parsed).unwrap();
+        for s in &syms {
+            if s.kind != "function" {
+                continue;
+            }
+            let prefix = format!("{}:", s.file_path);
+            let bare = s.id.strip_prefix(&prefix).unwrap_or(&s.id);
+            assert!(
+                !bare.contains(':'),
+                "symbol_id derivado não pode conter ':' (bare={bare:?}, id={:?})",
+                s.id
+            );
+        }
+    }
+
     #[test]
     fn ts_adapter_nested_symbols_with_scope() {
         let adapter = TypeScriptAdapter::new();

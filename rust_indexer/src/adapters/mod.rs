@@ -12,6 +12,7 @@ mod python_tests;
 pub mod rust;
 #[cfg(all(test, feature = "parsing"))]
 mod rust_tests;
+pub mod symbol_ids;
 pub mod typescript;
 #[cfg(all(test, feature = "parsing"))]
 mod typescript_tests;
