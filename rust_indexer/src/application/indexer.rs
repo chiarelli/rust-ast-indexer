@@ -39,6 +39,7 @@ pub struct IndexOptions {
     pub extract_calls: bool,
     pub chunking: ChunkingOptions,
     pub backpressure: Option<BackpressureConfig>,
+    pub load_ignores: bool,
 }
 
 pub struct Indexer {
@@ -59,6 +60,7 @@ impl Default for IndexOptions {
             extract_calls: true,
             chunking: ChunkingOptions::default(),
             backpressure: None,
+            load_ignores: false,
         }
     }
 }
@@ -92,7 +94,7 @@ impl Indexer {
                 })
                 .collect()
         } else {
-            let scan_opts = ScanOptions::new(path);
+            let scan_opts = ScanOptions::new(path).with_load_ignores(opts.load_ignores);
             walk_path(&scan_opts)?
         };
 
@@ -136,7 +138,7 @@ impl Indexer {
                 })
                 .collect()
         } else {
-            let scan_opts = ScanOptions::new(path);
+            let scan_opts = ScanOptions::new(path).with_load_ignores(opts.load_ignores);
             walk_path(&scan_opts)?
         };
 
@@ -420,6 +422,7 @@ mod tests {
             extract_calls: false,
             chunking: ChunkingOptions::default(),
             backpressure: None,
+            load_ignores: false,
         };
         let result = indexer
             .index_path(dir.path().to_str().unwrap(), opts)
@@ -448,6 +451,7 @@ mod tests {
             extract_calls: false,
             chunking: ChunkingOptions::default(),
             backpressure: None,
+            load_ignores: false,
         };
         let result = indexer
             .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
@@ -455,6 +459,45 @@ mod tests {
 
         assert_eq!(result.files.len(), 0);
         assert_eq!(result.chunks.len(), 0);
+    }
+
+    #[test]
+    fn index_path_parallel_applies_load_ignores_from_options() {
+        let dir = tempdir().unwrap();
+        init_git_repo(dir.path());
+        write_file(dir.path(), ".gitignore", "ignored.rs\n");
+        write_file(dir.path(), "kept.rs", "pub fn kept() {}\n");
+        write_file(dir.path(), "ignored.rs", "pub fn hidden() {}\n");
+
+        let indexer = Indexer::new();
+        let opts = IndexOptions {
+            max_concurrency: 1,
+            explicit_files: None,
+            extract_imports: false,
+            extract_calls: false,
+            chunking: ChunkingOptions::default(),
+            backpressure: None,
+            load_ignores: true,
+        };
+        let result = indexer
+            .index_path_parallel(dir.path().to_str().unwrap(), opts, None)
+            .unwrap();
+
+        let names: Vec<_> = result.files.iter().map(|f| f.path.clone()).collect();
+        assert!(names.contains(&"kept.rs".to_string()), "{names:?}");
+        assert!(
+            !names.contains(&"ignored.rs".to_string()),
+            "ignored file leaked: {names:?}"
+        );
+    }
+
+    fn init_git_repo(path: &std::path::Path) {
+        std::process::Command::new("git")
+            .arg("-C")
+            .arg(path)
+            .arg("init")
+            .output()
+            .unwrap();
     }
 
     #[cfg(feature = "parsing")]
@@ -512,6 +555,7 @@ mod tests {
             extract_calls: false,
             chunking: ChunkingOptions::default(),
             backpressure: None,
+            load_ignores: false,
         };
 
         let result = indexer
@@ -556,9 +600,10 @@ mod tests {
             max_concurrency: 2,
             explicit_files: None,
             extract_imports: false,
-            backpressure: None,
             extract_calls: false,
             chunking: ChunkingOptions::default(),
+            backpressure: None,
+            load_ignores: false,
         };
 
         let result = indexer

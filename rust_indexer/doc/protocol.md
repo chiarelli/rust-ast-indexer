@@ -21,6 +21,25 @@ Protocolo JSONL (newline-delimited JSON) sobre stdio. Cada linha é uma mensagem
 {"protocol_version":"1.0.0","type":"command","command":"index_path","seq":2,"job_id":"job-123","payload":{"path":"/proj","language":"rust","ignore_patterns":["target/**"],"options":{"max_concurrency":8,"chunk_lines":200,"backpressure":{"max_queue_size":500,"ack_required":false}}}}
 ```
 
+#### `options.load_ignores`
+
+Controla a **fonte de arquivos** do job. Default `false`.
+
+| Valor | Fonte de arquivos |
+|---|---|
+| `false` (default) | Varredura crua da árvore (`walkdir`) — carrega tudo com extensão reconhecida. |
+| `true` | `git ls-files --cached --others --exclude-standard` — apenas arquivos rastreados + não rastreados **não-ignorados**. Honra o ignore-stack completo do git (`.gitignore` aninhado, `.git/info/exclude`, `core.excludesFile`). Os globs de `<path>/.gitignore` e `<path>/.crushignore` são aplicados por cima. |
+
+Com `load_ignores: true`, se o git estiver indisponível no `PATH` ou `<path>`
+não for um repositório, o job **aborta** com o evento
+`error { code: "GIT_UNAVAILABLE", recoverable: false }` seguido de
+`job_completed { processed: 0, errors: 1 }` — não há degradação para uma
+varredura completa silenciosa. Sem git instalado, a operação não é realizada.
+
+```json
+{"protocol_version":"1.0.0","type":"command","command":"index_path","seq":7,"job_id":"job-125","payload":{"path":"/proj","options":{"load_ignores":true}}}
+```
+
 ### `list_files`
 ```json
 {"protocol_version":"1.0.0","type":"command","command":"list_files","seq":3,"payload":{"path":"/proj","filters":{"language":"rust"}}}

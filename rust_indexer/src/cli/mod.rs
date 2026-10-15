@@ -208,7 +208,16 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .unwrap_or(true),
                 chunking: chunking_opts,
                 backpressure: bp_config,
+                load_ignores: payload
+                    .get("options")
+                    .and_then(|o| o.get("load_ignores"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             };
+            // Copiado antes de `opts` ser movido para a thread: o streaming de
+            // `file_listed` usa a MESMA fonte (git) que `index_path_parallel`,
+            // senão os eventos de listagem e os chunks divergem.
+            let load_ignores = opts.load_ignores;
 
             let tracker = Arc::clone(&ctx);
             spawn_tracked(&tracker, move || {
@@ -233,7 +242,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     jsonl::write_event(&ev_start);
                 }
 
-                let scan_opts = crate::infra::walker::ScanOptions::new(&path);
+                let scan_opts = crate::infra::walker::ScanOptions::new(&path)
+                    .with_load_ignores(load_ignores);
                 let _ = crate::infra::walker::emit_file_listed_events(
                     &scan_opts,
                     Some(job_id.clone()),
@@ -262,6 +272,13 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             crate::infra::walker::WalkerError::BackpressureConfig(e) => (
                                 "BACKPRESSURE_CONFIG",
                                 format!("invalid backpressure config: {}", e),
+                            ),
+                            crate::infra::walker::WalkerError::Git(e) => (
+                                "GIT_UNAVAILABLE",
+                                format!(
+                                    "load_ignores requires git and a repository: {:?}",
+                                    e
+                                ),
                             ),
                             _ => ("WALKER_ERROR", format!("walker failed: {:?}", err)),
                         };
@@ -493,7 +510,13 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                     .unwrap_or(true),
                 chunking: chunking_opts,
                 backpressure: bp_config,
+                load_ignores: payload
+                    .get("options")
+                    .and_then(|o| o.get("load_ignores"))
+                    .and_then(|v| v.as_bool())
+                    .unwrap_or(false),
             };
+            let load_ignores = opts.load_ignores;
 
             let tracker = Arc::clone(&ctx);
             spawn_tracked(&tracker, move || {
@@ -534,7 +557,8 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         None,
                     );
                 } else {
-                    let scan_opts = crate::infra::walker::ScanOptions::new(&path);
+                    let scan_opts = crate::infra::walker::ScanOptions::new(&path)
+                        .with_load_ignores(load_ignores);
                     let _ = crate::infra::walker::emit_file_listed_events(
                         &scan_opts,
                         Some(job_id.clone()),
@@ -563,6 +587,13 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                             crate::infra::walker::WalkerError::BackpressureConfig(e) => (
                                 "BACKPRESSURE_CONFIG",
                                 format!("invalid backpressure config: {}", e),
+                            ),
+                            crate::infra::walker::WalkerError::Git(e) => (
+                                "GIT_UNAVAILABLE",
+                                format!(
+                                    "load_ignores requires git and a repository: {:?}",
+                                    e
+                                ),
                             ),
                             _ => ("WALKER_ERROR", format!("walker failed: {:?}", err)),
                         };

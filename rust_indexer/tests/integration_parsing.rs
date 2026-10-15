@@ -17,6 +17,7 @@ fn integration_parser_handles_rust_file() {
         extract_calls: false,
         chunking: rust_indexer::application::chunking::ChunkingOptions::default(),
         backpressure: None,
+        load_ignores: false,
     };
     let res = indexer
         .index_path_parallel(dir.path().to_str().unwrap(), opts, None)

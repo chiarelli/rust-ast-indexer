@@ -97,6 +97,7 @@ fn smoke_multi_lang_produces_symbols_for_all_languages() {
         extract_calls: false,
         chunking: ChunkingOptions::default(),
         backpressure: None,
+        load_ignores: false,
     };
     let res = indexer
         .index_path_parallel(td.path().to_str().unwrap(), opts, None)
@@ -143,6 +144,7 @@ fn smoke_multi_lang_rust_symbols_extracted() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -173,6 +175,7 @@ fn smoke_multi_lang_ts_symbols_extracted() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -203,6 +206,7 @@ fn smoke_multi_lang_java_symbols_extracted() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -235,6 +239,7 @@ fn smoke_no_files_produces_empty_results() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -263,6 +268,7 @@ fn smoke_only_unsupported_files_skipped() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -295,6 +301,7 @@ fn smoke_mixed_supported_unsupported_only_processes_supported() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -326,6 +333,7 @@ fn smoke_empty_rust_file_parses_without_error() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -351,6 +359,7 @@ fn smoke_whitespace_only_rust_file_parses_without_error() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -378,6 +387,7 @@ fn smoke_deep_nested_directory_structure() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )
@@ -410,6 +420,7 @@ fn smoke_multiple_files_same_directory() {
                 extract_calls: false,
                 chunking: ChunkingOptions::default(),
                 backpressure: None,
+                load_ignores: false,
             },
             None,
         )

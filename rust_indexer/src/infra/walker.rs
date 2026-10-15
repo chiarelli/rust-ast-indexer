@@ -60,11 +60,21 @@ pub enum WalkerError {
     Glob(globset::Error),
     /// Configuração de backpressure inválida (ex.: `max_queue_size` abaixo do mínimo).
     BackpressureConfig(BackpressureConfigError),
+    /// Falha ao obter a lista de arquivos do git (`load_ignores` ligado).
+    /// Erro **não recuperável**: sem git instalado ou fora de um repositório,
+    /// a operação é abortada em vez de degradar para um scan completo silencioso.
+    Git(crate::infra::git::GitError),
 }
 
 impl From<globset::Error> for WalkerError {
     fn from(value: globset::Error) -> Self {
         WalkerError::Glob(value)
+    }
+}
+
+impl From<crate::infra::git::GitError> for WalkerError {
+    fn from(value: crate::infra::git::GitError) -> Self {
+        WalkerError::Git(value)
     }
 }
 
@@ -172,6 +182,22 @@ where
         ignore_patterns.push(".crushignore".to_string());
     }
     let ignore_set = build_globset(&ignore_patterns)?;
+
+    // `load_ignores`: a lista de arquivos vem do git (`--exclude-standard`), que
+    // honra o ignore-stack COMPLETO (`.gitignore` aninhado, `.git/info/exclude`,
+    // `core.excludesFile`). Os globs de `.gitignore`/`.crushignore` lidos acima
+    // são aplicados por cima. Sem git ou fora de um repositório, a operação
+    // FALHA (`WalkerError::Git`) — nunca degrada para um scan completo silencioso.
+    if opts.load_ignores {
+        let git_files =
+            crate::infra::git::emit_git_visible_files(opts.path.to_string_lossy().as_ref())?;
+        for relative_path in git_files {
+            let abs_path = opts.path.join(&relative_path);
+            process_candidate(&abs_path, relative_path, &include_set, &ignore_set, &mut handler);
+        }
+        return Ok(());
+    }
+
     let walker = WalkDir::new(&opts.path).follow_links(opts.follow_links);
 
     for entry in walker.into_iter().flatten() {
@@ -180,54 +206,69 @@ where
         }
 
         let relative_path = normalize_relative_path(entry.path(), &opts.path);
-        if matches_glob(&ignore_set, &relative_path) {
-            continue;
-        }
-
-        if let Some(include) = &include_set {
-            if !include.is_match(&relative_path) {
-                continue;
-            }
-        }
-
-        // Skip files without registered parser (unknown extension)
-        let Some(language) = detect_language(entry.path()) else {
-            continue;
-        };
-
-        let metadata = match entry.metadata() {
-            Ok(value) => value,
-            Err(_) => {
-                handler(Err((relative_path, "io_error".to_string())));
-                continue;
-            }
-        };
-
-        let hash = match hash_file(entry.path()) {
-            Ok(value) => value,
-            Err(_) => {
-                handler(Err((relative_path, "io_error".to_string())));
-                continue;
-            }
-        };
-
-        let mtime = metadata
-            .modified()
-            .ok()
-            .and_then(|timestamp| timestamp.duration_since(UNIX_EPOCH).ok())
-            .map(|duration| duration.as_secs())
-            .unwrap_or(0);
-
-        handler(Ok(FileRecord {
-            path: relative_path,
-            size: metadata.len(),
-            mtime,
-            hash,
-            language: Some(language),
-        }));
+        process_candidate(entry.path(), relative_path, &include_set, &ignore_set, &mut handler);
     }
 
     Ok(())
+}
+
+/// Aplica ignore/include, resolve a linguagem e produz o `FileRecord` de um
+/// candidato. Compartilhado pelas duas fontes de descoberta (walk e git) para
+/// que ambas emitam exatamente os mesmos dados.
+fn process_candidate<F>(
+    abs_path: &Path,
+    relative_path: String,
+    include_set: &Option<GlobSet>,
+    ignore_set: &Option<GlobSet>,
+    handler: &mut F,
+) where
+    F: FnMut(Result<FileRecord, (String, String)>),
+{
+    if matches_glob(ignore_set, &relative_path) {
+        return;
+    }
+
+    if let Some(include) = include_set {
+        if !include.is_match(&relative_path) {
+            return;
+        }
+    }
+
+    // Skip files without registered parser (unknown extension)
+    let Some(language) = detect_language(abs_path) else {
+        return;
+    };
+
+    let metadata = match std::fs::metadata(abs_path) {
+        Ok(value) => value,
+        Err(_) => {
+            handler(Err((relative_path, "io_error".to_string())));
+            return;
+        }
+    };
+
+    let hash = match hash_file(abs_path) {
+        Ok(value) => value,
+        Err(_) => {
+            handler(Err((relative_path, "io_error".to_string())));
+            return;
+        }
+    };
+
+    let mtime = metadata
+        .modified()
+        .ok()
+        .and_then(|timestamp| timestamp.duration_since(UNIX_EPOCH).ok())
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+
+    handler(Ok(FileRecord {
+        path: relative_path,
+        size: metadata.len(),
+        mtime,
+        hash,
+        language: Some(language),
+    }));
 }
 
 fn load_ignore_patterns(root: &Path) -> Vec<String> {
@@ -372,15 +413,55 @@ mod tests {
     #[test]
     fn loads_gitignore_patterns_when_enabled() {
         let dir = tempdir().unwrap();
-        std::fs::write(dir.path().join(".gitignore"), "secret.rs\n").unwrap();
+        init_git_repo(dir.path());
         std::fs::write(dir.path().join("secret.rs"), b"pub const SECRET: i32 = 0;").unwrap();
         std::fs::write(dir.path().join("visible.rs"), b"pub fn visible() {}").unwrap();
+        std::fs::write(dir.path().join(".gitignore"), "secret.rs\n").unwrap();
 
         let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
         let records = walk_path(&opts).unwrap();
 
-        assert_eq!(records.len(), 1);
-        assert_eq!(records[0].path, "visible.rs");
+        let names: Vec<_> = records.iter().map(|r| r.path.clone()).collect();
+        assert_eq!(names, vec!["visible.rs".to_string()]);
+    }
+
+    #[test]
+    fn load_ignores_uses_git_visible_files() {
+        let dir = tempdir().unwrap();
+        init_git_repo(dir.path());
+        std::fs::write(dir.path().join(".gitignore"), "target/\n").unwrap();
+        std::fs::write(dir.path().join("visible.rs"), b"pub fn visible() {}").unwrap();
+        std::fs::create_dir_all(dir.path().join("target")).unwrap();
+        std::fs::write(dir.path().join("target/ignored.rs"), b"pub fn hidden() {}").unwrap();
+
+        let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
+        let records = walk_path(&opts).unwrap();
+
+        let names: Vec<_> = records.iter().map(|r| r.path.clone()).collect();
+        assert!(names.contains(&"visible.rs".to_string()), "{names:?}");
+        assert!(
+            !names.iter().any(|p| p.starts_with("target/")),
+            "ignored file leaked: {names:?}"
+        );
+    }
+
+    #[test]
+    fn load_ignores_without_git_repo_errors() {
+        let dir = tempdir().unwrap();
+        std::fs::write(dir.path().join("a.rs"), b"pub fn a() {}").unwrap();
+
+        let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
+        match walk_path(&opts) {
+            Err(WalkerError::Git(_)) => {}
+            Err(other) => panic!("expected WalkError::Git, got {:?}", other),
+            Ok(records) => panic!("expected error, got {} records", records.len()),
+        }
+    }
+
+    fn init_git_repo(path: &Path) {
+        use std::process::Command;
+        let p = path.to_str().unwrap();
+        Command::new("git").arg("-C").arg(p).arg("init").output().unwrap();
     }
 
     #[cfg(unix)]
