@@ -2,6 +2,18 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
+/// Remove o prefixo qualificador `{file}:` de um `symbol_id`, devolvendo o NOME
+/// cru (`"src/app.ts:main"` → `"main"`). O contrato `{file}:{symbol}` é usado
+/// pelo `chunk_emitted` e pelo `call_edge` (ADR-002); centralizar aqui evita
+/// que os pontos de strip (protocol, jsonl, remap de caller) divirjam.
+///
+/// Remove **um** prefixo exato — nunca corta na última `:`, que corromperia
+/// nomes legítimos com `:` (ex.: `cache[1:2]`).
+pub fn strip_symbol_file_prefix<'a>(file: &str, raw: &'a str) -> &'a str {
+    let prefix = format!("{}:", file);
+    raw.strip_prefix(&prefix).unwrap_or(raw)
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FileRecord {
     pub path: String,

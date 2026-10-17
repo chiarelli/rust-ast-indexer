@@ -46,6 +46,12 @@ pub struct ChunkEventPayload {
     pub file: String,
     pub language: Option<String>,
     pub symbol_id: Option<String>,
+    /// Todos os símbolos associados ao chunk (nomes CRUS, sem o prefixo
+    /// `{file}:`). Aditivo (`serde(default)`), preservando compatibilidade de
+    /// leitura. Sem ele, símbolos desambiguados pelo `dedupe_symbol_ids`
+    /// (2º..N-ésimo homônimo de um chunk agrupado) sumiriam do fio.
+    #[serde(default)]
+    pub symbol_ids: Vec<String>,
     pub start_line: usize,
     pub end_line: usize,
     pub text: String,
@@ -83,10 +89,18 @@ impl From<crate::domain::types::Chunk> for ChunkEventPayload {
         // `src/app.ts:src/app.ts:main` (caminho duplicado). O id interno do
         // `Chunk` segue qualificado (o `with_context` o usa como chave de
         // lookup no índice de símbolos).
-        let symbol_id = c.symbol_id.as_ref().map(|raw| {
-            let prefix = format!("{}:", c.file_path);
-            raw.strip_prefix(&prefix).unwrap_or(raw).to_string()
-        });
+        let symbol_id = c
+            .symbol_id
+            .as_ref()
+            .map(|raw| crate::domain::types::strip_symbol_file_prefix(&c.file_path, raw).to_string());
+
+        // Todos os ids do chunk, com o mesmo strip de prefixo do `symbol_id`
+        // singular. Preserva a ordem do `Chunk::symbol_ids` (determinística).
+        let symbol_ids = c
+            .symbol_ids
+            .iter()
+            .map(|raw| crate::domain::types::strip_symbol_file_prefix(&c.file_path, raw).to_string())
+            .collect();
 
         ChunkEventPayload {
             chunk_id: c.id,
@@ -94,6 +108,7 @@ impl From<crate::domain::types::Chunk> for ChunkEventPayload {
             file: c.file_path,
             language: c.language,
             symbol_id,
+            symbol_ids,
             start_line: c.start_line,
             end_line: c.end_line,
             text: c.text,

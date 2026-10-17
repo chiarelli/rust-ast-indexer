@@ -189,11 +189,21 @@ where
     // são aplicados por cima. Sem git ou fora de um repositório, a operação
     // FALHA (`WalkerError::Git`) — nunca degrada para um scan completo silencioso.
     if opts.load_ignores {
-        let git_files =
-            crate::infra::git::emit_git_visible_files(opts.path.to_string_lossy().as_ref())?;
+        let git_files = crate::infra::git::emit_git_visible_files(&opts.path)?;
         for relative_path in git_files {
+            // `abs_path` preserva o `PathBuf` (bytes originais) para o acesso ao
+            // FS. O `FileRecord.path`/globs usam `String`; um path não-UTF8 NÃO
+            // pode degradar para `U+FFFD` silenciosamente (apontaria para arquivo
+            // inexistente e divergiria do FS) — é reportado como `file_invalid`.
             let abs_path = opts.path.join(&relative_path);
-            process_candidate(&abs_path, relative_path, &include_set, &ignore_set, &mut handler);
+            let Some(relative_string) = relative_path.to_str().map(str::to_string) else {
+                handler(Err((
+                    relative_path.to_string_lossy().into_owned(),
+                    "non_utf8_path".to_string(),
+                )));
+                continue;
+            };
+            process_candidate(&abs_path, relative_string, &include_set, &ignore_set, &mut handler);
         }
         return Ok(());
     }
@@ -205,7 +215,15 @@ where
             continue;
         }
 
-        let relative_path = normalize_relative_path(entry.path(), &opts.path);
+        // Path não-UTF8: não degrada para `U+FFFD` silenciosamente (apontaria
+        // para arquivo inexistente). Mesmo contrato do ramo `load_ignores`.
+        let Some(relative_path) = normalize_relative_path(entry.path(), &opts.path) else {
+            handler(Err((
+                entry.path().to_string_lossy().into_owned(),
+                "non_utf8_path".to_string(),
+            )));
+            continue;
+        };
         process_candidate(entry.path(), relative_path, &include_set, &ignore_set, &mut handler);
     }
 
@@ -305,13 +323,17 @@ fn matches_glob(set: &Option<GlobSet>, value: &str) -> bool {
     set.as_ref().is_some_and(|set| set.is_match(value))
 }
 
-fn normalize_relative_path(path: &Path, base: &Path) -> String {
-    path.strip_prefix(base)
-        .unwrap_or(path)
-        .iter()
-        .map(|component| component.to_string_lossy())
-        .collect::<Vec<_>>()
-        .join("/")
+/// Path relativo (barra-normalizado) ao `base`, ou `None` se algum componente
+/// não for UTF-8. `None` NÃO pode virar `U+FFFD`: o `FileRecord.path` é `String`
+/// e um path corrompido apontaria para outro arquivo — quem chama reporta
+/// `file_invalid`.
+fn normalize_relative_path(path: &Path, base: &Path) -> Option<String> {
+    let rel = path.strip_prefix(base).unwrap_or(path);
+    let mut parts = Vec::new();
+    for component in rel.iter() {
+        parts.push(component.to_str()?.to_string());
+    }
+    Some(parts.join("/"))
 }
 
 fn detect_language(path: &Path) -> Option<String> {
@@ -462,6 +484,39 @@ mod tests {
         use std::process::Command;
         let p = path.to_str().unwrap();
         Command::new("git").arg("-C").arg(p).arg("init").output().unwrap();
+    }
+
+    /// Path não-UTF8 vira `file_invalid{reason:"non_utf8_path"}` em vez de ser
+    /// indexado com o path corrompido (`U+FFFD`), nos dois modos (walk e git).
+    #[cfg(unix)]
+    #[test]
+    fn non_utf8_path_is_reported_invalid_not_indexed() {
+        use std::ffi::OsStr;
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = tempdir().unwrap();
+        let name = OsStr::from_bytes(b"bad\xFF.rs");
+        std::fs::write(dir.path().join(name), b"pub fn x() {}").unwrap();
+
+        // ramo walk (sem git): o candidato não-UTF8 é reportado, não indexado.
+        let opts = ScanOptions::new(dir.path());
+        let mut records = Vec::new();
+        let mut invalid: Vec<(String, String)> = Vec::new();
+        walk_with_callback(&opts, |res| match res {
+            Ok(r) => records.push(r),
+            Err(e) => invalid.push(e),
+        })
+        .unwrap();
+
+        assert!(
+            invalid.iter().any(|(_, reason)| reason == "non_utf8_path"),
+            "esperava non_utf8_path, obtido {invalid:?}"
+        );
+        assert!(
+            records.iter().all(|r| r.path != "bad\u{FFFD}.rs"),
+            "path corrompido indexado: {:?}",
+            records.iter().map(|r| &r.path).collect::<Vec<_>>()
+        );
     }
 
     #[cfg(unix)]

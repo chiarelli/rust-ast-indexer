@@ -187,7 +187,11 @@ impl Indexer {
                 let full_path = base_path.join(&file.path);
                 let text = std::fs::read_to_string(&full_path).unwrap_or_default();
 
-                let (parsed_text, symbols) = match &adapter_opt {
+                // Chunks são calculados ANTES do remap de arestas: só depois de
+                // `chunk_file_contents` sabemos quais símbolos de fato viraram
+                // chunk (o chunker pode descartar por `max_lines`/estratégia).
+                // O remap usa exatamente esse conjunto emitido — sem dangling.
+                let chunks_for_file = match &adapter_opt {
                     Some(adapter) => match adapter.parse_source(&text) {
                         Ok(mut parsed) => {
                             parsed.path = file.path.clone();
@@ -219,8 +223,39 @@ impl Indexer {
                                 }
                             }
 
+                            let chunks = chunk_file_contents(
+                                &file.path,
+                                &parsed.source,
+                                file.language.clone().or(lang.clone()),
+                                symbols.as_ref(),
+                                &opts.chunking,
+                            );
+
                             if opts.extract_calls {
-                                if let Ok(calls) = adapter.extract_calls(&parsed) {
+                                if let Ok(mut calls) = adapter.extract_calls(&parsed) {
+                                    // Arestas referenciam o caller pelo NOME base;
+                                    // com homônimos (`handle`, `lambda`, ...) o
+                                    // 2º..N-ésimo resolve para o chunk errado.
+                                    // Remapeia por posição para o `symbol_id`
+                                    // dedupado (ADR-002), restrito aos símbolos
+                                    // que geraram chunk neste arquivo.
+                                    if let Some(ref syms) = symbols {
+                                        let emitted: std::collections::HashSet<&str> = chunks
+                                            .iter()
+                                            .flat_map(|c| {
+                                                c.symbol_ids.iter().map(|s| s.as_str())
+                                            })
+                                            .collect();
+                                        let chunked: Vec<_> = syms
+                                            .iter()
+                                            .filter(|s| emitted.contains(s.id.as_str()))
+                                            .cloned()
+                                            .collect();
+                                        crate::adapters::symbol_ids::remap_callers(
+                                            &mut calls,
+                                            &chunked,
+                                        );
+                                    }
                                     for edge in calls {
                                         crate::infra::jsonl::write_call_event(
                                             job_id.clone(),
@@ -230,20 +265,24 @@ impl Indexer {
                                 }
                             }
 
-                            (parsed.source.clone(), symbols)
+                            chunks
                         }
-                        Err(_) => (text.clone(), None),
+                        Err(_) => chunk_file_contents(
+                            &file.path,
+                            &text,
+                            file.language.clone().or(lang.clone()),
+                            None,
+                            &opts.chunking,
+                        ),
                     },
-                    None => (text.clone(), None),
+                    None => chunk_file_contents(
+                        &file.path,
+                        &text,
+                        file.language.clone().or(lang.clone()),
+                        None,
+                        &opts.chunking,
+                    ),
                 };
-
-                let chunks_for_file = chunk_file_contents(
-                    &file.path,
-                    &parsed_text,
-                    file.language.clone().or(lang),
-                    symbols.as_ref(),
-                    &opts.chunking,
-                );
 
                 for chunk in chunks_for_file {
                     let chunk_for_event = chunk.clone();

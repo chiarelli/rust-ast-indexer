@@ -126,6 +126,12 @@ Payload fields:
   O arquivo vem no campo `file`. Consumidores que montam uma chave `{file}:{symbol}`
   (padrão do `memtier`, ADR-002) devem usar este valor CRU — concatenar com `file`
   de novo produziria caminho duplicado (`src/app.ts:src/app.ts:main`).
+  Quando um chunk agrupa homônimos desambiguados por `dedupe_symbol_ids`, este
+  campo traz a **primeira** ocorrência; todas as ocorrências vêm em `symbol_ids`.
+- `symbol_ids`: array com **todos** os símbolos associados ao chunk (nomes CRUS,
+  mesmo formato do `symbol_id`). Aditivo (`serde(default)`, default `[]`).
+  É o que garante que símbolos desambiguados (`handle@7`) cheguem ao consumidor
+  em vez de sumirem quando o chunk agrupa mais de um símbolo.
 - `start_line`: starting line number (1-based) included in the chunk (integer)
 - `end_line`: ending line number (inclusive) (integer)
 - `text`: textual content of the chunk (string)
@@ -134,7 +140,7 @@ Payload fields:
 
 Example:
 ```json
-{"protocol_version":"1.0.0","type":"event","event":"chunk_emitted","job_id":"job-123","payload":{"chunk_id":"chunk-1","chunk_kind":"Symbol","file":"src/lib.rs","language":"rust","symbol_id":"foo","start_line":10,"end_line":40,"text":"fn foo() {}","chunk_md5":"d41d8cd98f00b204e9800998ecf8427e","size":12}}
+{"protocol_version":"1.0.0","type":"event","event":"chunk_emitted","job_id":"job-123","payload":{"chunk_id":"chunk-1","chunk_kind":"Symbol","file":"src/lib.rs","language":"rust","symbol_id":"foo","symbol_ids":["foo"],"start_line":10,"end_line":40,"text":"fn foo() {}","chunk_md5":"d41d8cd98f00b204e9800998ecf8427e","size":12}}
 ```
 
 Notes:
@@ -318,6 +324,17 @@ Emitido quando o adapter detecta uma chamada de função/método durante o parsi
 qualificado com o caminho. Antes de 2026-10-09 o arquivo existia apenas embutido no
 `caller_symbol_id` (`"lib.rs:process"`); `from_file` é campo aditivo e os dois juntos
 dão o que o consumidor precisa para casar a aresta com o chunk (padrão `{file}:{symbol}`).
+
+Quando o arquivo tem símbolos homônimos (ex.: dois métodos `handle`, ou várias
+`lambda`), o `caller_symbol_id` traz a ocorrência **desambiguada** que contém a
+chamada (ex.: `handle@40`), resolvida por posição contra o mesmo esquema de
+`symbol_id` do `chunk_emitted`. A 1ª ocorrência mantém o nome base; a chave
+`{file}:{caller_symbol_id}` casa exatamente com um `symbol_id`/`symbol_ids` emitido.
+
+Quando a resolução por posição é **indesambiguável** (dois homônimos com o mesmo
+span, ex.: mesma linha; ou chamada fora de qualquer span com 2+ homônimos do mesmo
+nome), o `caller_symbol_id` é emitido como `null` — nunca um palpite. Um caller
+ausente é honesto; um caller errado corromperia o grafo em silêncio.
 
 **Exemplo:**
 ```json

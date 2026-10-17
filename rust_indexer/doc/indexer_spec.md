@@ -129,13 +129,14 @@ The indexer splits source files into semantically coherent chunks for consumptio
 
 ## Chunk Schema
 
-> **Nota (2026-10-09):** esta seção descreve o **modelo interno `Chunk`** do indexer,
+> **Nota (2026-10-15):** esta seção descreve o **modelo interno `Chunk`** do indexer,
 > NÃO o payload público do evento. O `chunk_emitted` emite um subconjunto:
-> `chunk_id`, `chunk_kind`, `file`, `language`, `symbol_id`, `start_line`,
-> `end_line`, `text`, `chunk_md5`, `size`. Campos como `symbol_ids`, `content`,
-> `strategy` e `metadata` existem só no modelo interno e **não são emitidos**
-> (verificado: as chaves reais do payload não os incluem). O schema canônico do
-> evento está em `doc/protocol.md` § `chunk_emitted`.
+> `chunk_id`, `chunk_kind`, `file`, `language`, `symbol_id`, `symbol_ids`,
+> `start_line`, `end_line`, `text`, `chunk_md5`, `size`. Campos como `content`,
+> `strategy` e `metadata` existem só no modelo interno e **não são emitidos**.
+> `symbol_ids` (lista com todos os símbolos do chunk) **passou a ser emitido**
+> (aditivo, `serde(default)`) para que homônimos desambiguados cheguem ao
+> consumidor. O schema canônico do evento está em `doc/protocol.md` § `chunk_emitted`.
 
 ```json
 {
@@ -170,8 +171,8 @@ The indexer splits source files into semantically coherent chunks for consumptio
 
 > **Atenção:** esta tabela descreve o modelo INTERNO `Chunk`. O evento
 > `chunk_emitted` emite apenas `chunk_id`, `chunk_kind`, `file`, `language`,
-> `symbol_id`, `start_line`, `end_line`, `text`, `chunk_md5`, `size`. O
-> contrato canônico do evento é `doc/protocol.md` § `chunk_emitted`.
+> `symbol_id`, `symbol_ids`, `start_line`, `end_line`, `text`, `chunk_md5`,
+> `size`. O contrato canônico do evento é `doc/protocol.md` § `chunk_emitted`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -414,7 +415,10 @@ Unsupported extensions are skipped silently.
 The indexer uses Rayon for parallel processing of files:
 
 ```rust
-let result = indexer.index_path_parallel(path, IndexOptions { max_concurrency: 4 }, None)?;
+// `IndexOptions` tem vários campos; use `..Default::default()` para não quebrar
+// quando novos campos forem adicionados (ex.: `load_ignores`).
+let opts = IndexOptions { max_concurrency: 4, ..Default::default() };
+let result = indexer.index_path_parallel(path, opts, None)?;
 ```
 
 Each file is parsed concurrently. The `ParserPool` ensures thread-safe adapter access via `DashMap`.

@@ -8,4 +8,7 @@ pub mod types;
 pub use normalize::normalize_import;
 pub use normalize::normalize_symbols;
 pub use resolve::{apply_import_resolution, resolve_import_target};
-pub use types::{CallEdge, Chunk, FileRecord, ImportEdge, Location, NormalizedSymbol, Symbol};
+pub use types::{
+    strip_symbol_file_prefix, CallEdge, Chunk, FileRecord, ImportEdge, Location, NormalizedSymbol,
+    Symbol,
+};

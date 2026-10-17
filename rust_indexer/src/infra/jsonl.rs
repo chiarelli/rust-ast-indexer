@@ -54,10 +54,7 @@ pub fn build_call_event(job_id: Option<String>, payload: &CallEdge) -> Event {
     let mut payload = payload.clone();
     if let Some(raw) = payload.caller_symbol_id.take() {
         let bare = match payload.from_file.as_deref() {
-            Some(file) => raw
-                .strip_prefix(&format!("{}:", file))
-                .unwrap_or(&raw)
-                .to_string(),
+            Some(file) => crate::domain::types::strip_symbol_file_prefix(file, &raw).to_string(),
             // Sem `from_file` não há prefixo confiável para remover: preserva o
             // valor como veio (nunca corta às cegas na última ':').
             None => raw,
@@ -340,6 +337,7 @@ mod tests {
             file: "src/lib.rs".into(),
             language: Some("rust".into()),
             symbol_id: Some("sym-1".into()),
+            symbol_ids: vec!["sym-1".into()],
             start_line: 1,
             end_line: 10,
             text: "fn main() {}".into(),
@@ -371,6 +369,7 @@ mod tests {
                     file: "test.rs".into(),
                     language: Some("rust".into()),
                     symbol_id: None,
+                    symbol_ids: vec![],
                     start_line: 1,
                     end_line: 10,
                     text: "test".into(),
@@ -408,6 +407,7 @@ mod tests {
                         file: "test.rs".into(),
                         language: Some("rust".into()),
                         symbol_id: None,
+                        symbol_ids: vec![],
                         start_line: 1,
                         end_line: 10,
                         text: "test".into(),
@@ -443,6 +443,7 @@ mod tests {
             file: "test.rs".into(),
             language: Some("rust".into()),
             symbol_id: None,
+            symbol_ids: vec![],
             start_line: 1,
             end_line: 10,
             text: "test".into(),

@@ -94,6 +94,32 @@ where
     }
 }
 
+/// Converte a lista vinda do git (`PathBuf`) para os `String` que
+/// `IndexOptions.explicit_files` exige. Paths não-UTF8 NÃO podem virar `U+FFFD`
+/// silenciosamente (apontariam para outro arquivo); são descartados com um
+/// evento `file_invalid`, o MESMO contrato do walker com `load_ignores`.
+fn explicit_files_from_git(job_id: &str, list: Vec<std::path::PathBuf>) -> Vec<String> {
+    let mut out = Vec::with_capacity(list.len());
+    for p in list {
+        match p.to_str() {
+            Some(s) => out.push(s.to_string()),
+            None => {
+                jsonl::write_event(&Event {
+                    protocol_version: "1.0.0".into(),
+                    r#type: "event".into(),
+                    event: "file_invalid".into(),
+                    job_id: Some(job_id.to_string()),
+                    payload: Some(json!({
+                        "path": p.to_string_lossy(),
+                        "reason": "non_utf8_path"
+                    })),
+                });
+            }
+        }
+    }
+    out
+}
+
 /// Espera os jobs em background terminarem antes de o processo sair.
 ///
 /// Fase 1 — **força o resume** de todos os monitores de backpressure. Um job
@@ -381,8 +407,10 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         range.get("from").and_then(|v| v.as_str()),
                         range.get("to").and_then(|v| v.as_str()),
                     ) {
-                        match crate::infra::git::get_git_diff_files(&path, from, to) {
-                            Ok(list) => explicit_files = Some(list),
+                        match crate::infra::git::get_git_diff_files(std::path::Path::new(&path), from, to) {
+                            Ok(list) => {
+    explicit_files = Some(explicit_files_from_git(&job_id, list))
+}
                             Err(e) => {
                                 let ev = Event {
                                     protocol_version: "1.0.0".into(),
@@ -409,8 +437,10 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         }
                     } else {
                         // invalid git_range shape: fall back to tracked files
-                        match crate::infra::git::emit_git_tracked_files(&path) {
-                            Ok(list) => explicit_files = Some(list),
+                        match crate::infra::git::emit_git_tracked_files(std::path::Path::new(&path)) {
+                            Ok(list) => {
+    explicit_files = Some(explicit_files_from_git(&job_id, list))
+}
                             Err(e) => {
                                 let ev = Event {
                                     protocol_version: "1.0.0".into(),
@@ -437,8 +467,10 @@ pub fn handle_command(ctx: Arc<ApplicationContext>, cmd: Command) {
                         }
                     }
                 } else {
-                    match crate::infra::git::emit_git_tracked_files(&path) {
-                        Ok(list) => explicit_files = Some(list),
+                    match crate::infra::git::emit_git_tracked_files(std::path::Path::new(&path)) {
+                        Ok(list) => {
+    explicit_files = Some(explicit_files_from_git(&job_id, list))
+}
                         Err(e) => {
                             let ev = Event {
                                 protocol_version: "1.0.0".into(),
