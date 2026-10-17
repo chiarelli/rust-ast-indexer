@@ -5,7 +5,7 @@ use std::path::{Path, PathBuf};
 use std::time::UNIX_EPOCH;
 
 use blake3::Hasher;
-use globset::{Glob, GlobSet, GlobSetBuilder};
+use globset::{Glob, GlobBuilder, GlobSet, GlobSetBuilder};
 use walkdir::WalkDir;
 
 use crate::application::protocol::Event;
@@ -175,18 +175,24 @@ where
     let include_set = build_globset(&opts.include_patterns)?;
     let mut ignore_patterns = opts.ignore_patterns.clone();
     if opts.load_ignores {
-        let loaded = load_ignore_patterns(&opts.path);
-        ignore_patterns.extend(loaded);
+        // `git ls-files --exclude-standard` já honra o ignore-stack COMPLETO do
+        // git — incluindo a negação `!` e a regra de que `*` NÃO cruza `/`.
+        // Re-aplicar os globs do `.gitignore` aqui com `globset` (que não tem
+        // `!` e cujo `*` cruza `/`) descartava arquivos que o git reporta como
+        // VISÍVEIS (defeito medido: `files=0` num repo cujo `.gitignore` usa
+        // `.agents/*` + `!.agents/skills/…`). Por isso SÓ o `.crushignore` — uma
+        // convenção que o git não conhece — é aplicado por cima, com separador
+        // literal para espelhar a semântica do gitignore.
+        ignore_patterns.extend(load_crushignore_patterns(&opts.path));
         // Always ignore repository ignore files themselves
         ignore_patterns.push(".gitignore".to_string());
         ignore_patterns.push(".crushignore".to_string());
     }
-    let ignore_set = build_globset(&ignore_patterns)?;
+    let ignore_set = build_ignore_globset(&ignore_patterns)?;
 
     // `load_ignores`: a lista de arquivos vem do git (`--exclude-standard`), que
     // honra o ignore-stack COMPLETO (`.gitignore` aninhado, `.git/info/exclude`,
-    // `core.excludesFile`). Os globs de `.gitignore`/`.crushignore` lidos acima
-    // são aplicados por cima. Sem git ou fora de um repositório, a operação
+    // `core.excludesFile`). Sem git ou fora de um repositório, a operação
     // FALHA (`WalkerError::Git`) — nunca degrada para um scan completo silencioso.
     if opts.load_ignores {
         let git_files = crate::infra::git::emit_git_visible_files(&opts.path)?;
@@ -289,18 +295,16 @@ fn process_candidate<F>(
     }));
 }
 
-fn load_ignore_patterns(root: &Path) -> Vec<String> {
+fn load_crushignore_patterns(root: &Path) -> Vec<String> {
     let mut patterns = Vec::new();
-    for fname in &[".gitignore", ".crushignore"] {
-        let path = root.join(fname);
-        if let Ok(content) = std::fs::read_to_string(&path) {
-            for line in content.lines() {
-                let line = line.trim();
-                if line.is_empty() || line.starts_with('#') {
-                    continue;
-                }
-                patterns.push(line.to_string());
+    let path = root.join(".crushignore");
+    if let Ok(content) = std::fs::read_to_string(&path) {
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
             }
+            patterns.push(line.to_string());
         }
     }
     patterns
@@ -314,6 +318,23 @@ fn build_globset(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error>
     let mut builder = GlobSetBuilder::new();
     for pattern in patterns {
         builder.add(Glob::new(pattern)?);
+    }
+
+    Ok(Some(builder.build()?))
+}
+
+/// Como `build_globset`, mas com `literal_separator(true)`: `*` NÃO cruza `/`,
+/// espelhando a semântica do gitignore. Usado para o `.crushignore`, cujos
+/// padrões devem ignorar um diretório (ex.: `.crushignore` com `target/`) sem
+/// derrubar subárvores inteiras por engano.
+fn build_ignore_globset(patterns: &[String]) -> Result<Option<GlobSet>, globset::Error> {
+    if patterns.is_empty() {
+        return Ok(None);
+    }
+
+    let mut builder = GlobSetBuilder::new();
+    for pattern in patterns {
+        builder.add(GlobBuilder::new(pattern).literal_separator(true).build()?);
     }
 
     Ok(Some(builder.build()?))
@@ -433,7 +454,7 @@ mod tests {
     }
 
     #[test]
-    fn loads_gitignore_patterns_when_enabled() {
+    fn load_ignores_honors_gitignore_patterns() {
         let dir = tempdir().unwrap();
         init_git_repo(dir.path());
         std::fs::write(dir.path().join("secret.rs"), b"pub const SECRET: i32 = 0;").unwrap();
@@ -445,6 +466,32 @@ mod tests {
 
         let names: Vec<_> = records.iter().map(|r| r.path.clone()).collect();
         assert_eq!(names, vec!["visible.rs".to_string()]);
+    }
+
+    /// `.crushignore` é uma convenção que o git NÃO conhece, então é aplicada por
+    /// cima da lista do git. `*` não cruza `/` (`literal_separator`): o padrão
+    /// `sub/*.rs` ignora só o nível direto de `sub/`, preservando `sub/deep/`.
+    #[test]
+    fn load_ignores_applies_crushignore_without_crossing_slash() {
+        let dir = tempdir().unwrap();
+        init_git_repo(dir.path());
+        std::fs::create_dir_all(dir.path().join("sub/deep")).unwrap();
+        std::fs::write(dir.path().join("sub/top.rs"), b"pub fn top() {}").unwrap();
+        std::fs::write(dir.path().join("sub/deep/kept.rs"), b"pub fn kept() {}").unwrap();
+        std::fs::write(dir.path().join(".crushignore"), "sub/*.rs\n").unwrap();
+
+        let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
+        let records = walk_path(&opts).unwrap();
+        let names: Vec<_> = records.iter().map(|r| r.path.clone()).collect();
+
+        assert!(
+            !names.contains(&"sub/top.rs".to_string()),
+            "sub/top.rs (crushignore) vazou: {names:?}"
+        );
+        assert!(
+            names.contains(&"sub/deep/kept.rs".to_string()),
+            "`*` cruzou `/` e derrubou sub/deep/kept.rs: {names:?}"
+        );
     }
 
     #[test]
@@ -464,6 +511,32 @@ mod tests {
         assert!(
             !names.iter().any(|p| p.starts_with("target/")),
             "ignored file leaked: {names:?}"
+        );
+    }
+
+    /// Regressão do defeito `files=0`: com `load_ignores`, a lista de arquivos
+    /// vem do git (que honra negação `!` e `*` sem cruzar `/`). Re-aplicar os
+    /// globs do `.gitignore` por cima com `globset` (sem `!`, com `*` cruzando
+    /// `/`) descartava arquivos que o git reporta VISÍVEIS — `keep.rs` abaixo.
+    #[test]
+    fn load_ignores_honors_gitignore_negation() {
+        let dir = tempdir().unwrap();
+        init_git_repo(dir.path());
+        std::fs::write(dir.path().join(".gitignore"), "*.rs\n!keep.rs\n").unwrap();
+        std::fs::write(dir.path().join("keep.rs"), b"pub fn keep() {}").unwrap();
+        std::fs::write(dir.path().join("drop.rs"), b"pub fn drop() {}").unwrap();
+
+        let opts = ScanOptions::new(dir.path()).with_load_ignores(true);
+        let records = walk_path(&opts).unwrap();
+        let names: Vec<_> = records.iter().map(|r| r.path.clone()).collect();
+
+        assert!(
+            names.contains(&"keep.rs".to_string()),
+            "negação `!` do git ignorada: keep.rs sumiu ({names:?})"
+        );
+        assert!(
+            !names.contains(&"drop.rs".to_string()),
+            "drop.rs (ignorado pelo git) vazou: {names:?}"
         );
     }
 

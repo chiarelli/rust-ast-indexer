@@ -28,7 +28,7 @@ Controla a **fonte de arquivos** do job. Default `false`.
 | Valor | Fonte de arquivos |
 |---|---|
 | `false` (default) | Varredura crua da árvore (`walkdir`) — carrega tudo com extensão reconhecida. |
-| `true` | `git ls-files --cached --others --exclude-standard` — apenas arquivos rastreados + não rastreados **não-ignorados**. Honra o ignore-stack completo do git (`.gitignore` aninhado, `.git/info/exclude`, `core.excludesFile`). Os globs de `<path>/.gitignore` e `<path>/.crushignore` são aplicados por cima. |
+| `true` | `git ls-files --cached --others --exclude-standard` — apenas arquivos rastreados + não rastreados **não-ignorados**. Honra o ignore-stack completo do git (`.gitignore` aninhado, `.git/info/exclude`, `core.excludesFile`, incluindo a **negação `!`**). O `.gitignore` NÃO é re-aplicado por cima (o git já o honra; re-aplicá-lo com `globset` — sem `!` e com `*` cruzando `/` — descartaria arquivos visíveis). Apenas `<path>/.crushignore` é aplicado por cima, com `literal_separator(true)`. |
 
 Com `load_ignores: true`, se o git estiver indisponível no `PATH` ou `<path>`
 não for um repositório, o job **aborta** com o evento
